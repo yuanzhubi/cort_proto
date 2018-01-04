@@ -76,7 +76,7 @@ struct fibonacci_cort : public cort_proto{
             
             //CO_AWAIT_ALL_IF(true, corts[0], corts[1]);
             //CO_AWAIT_ALL_IF(cond, cort) means:
-            //if(cond){CO_GOTO_NEXT_STATE;}
+            //if(!cond){CO_GOTO_NEXT_STATE;}
             //CO_AWAIT_ALL(cort);
             
             //CO_AWAIT_RANGE_IF(true, corts, corts+2);
