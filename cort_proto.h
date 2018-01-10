@@ -6,17 +6,6 @@
 #define CO_JOIN2(x,y) x##y 
 #define CO_JOIN(x,y) CO_JOIN2(x,y)
 
-#define CO_STATE_MAX_COUNT ((count_type)((1u<<(sizeof(count_type)*8)) - 1u)) // you can increase the number if your compiler affordable
-
-#define CO_STATE_EVAL_COUNTER(counter) (sizeof(*counter((struct_int<CO_STATE_MAX_COUNT>*)0)) \
-          - sizeof(*counter((void*)0)))
-          
-/*We can change the result of CO_STATE_EVAL_COUNTER if we use CO_STATE_INCREASE_COUNTER or CO_STATE_SET_COUNTER*/
-
-#define CO_STATE_INCREASE_COUNTER(counter, delta)  static char (*counter(struct_int<CO_STATE_EVAL_COUNTER(counter) + 1>*))[CO_STATE_EVAL_COUNTER(counter) + sizeof(*counter((void*)0)) + (delta)] 
-
-#define CO_STATE_SET_COUNTER(counter, value)  static char (*counter(struct_int<CO_STATE_EVAL_COUNTER(counter) + 1>*))[value + sizeof(*counter((void*)0))]
-
 struct cort_proto{ 
     typedef cort_proto* (*run_type)(cort_proto*);
     typedef cort_proto base_type;
