@@ -212,9 +212,9 @@ public: \
     return this;   \
     CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
     
-#define CO_YILED() CO_AWAIT_ANY()
+#define CO_YIELD() CO_AWAIT_ANY()
 
-#define CO_YILED_AGAIN() CO_AWAIT_ANY_BACK()
+#define CO_YIELD_AGAIN() CO_AWAIT_ANY_BACK()
 
 //Sometimes you want to stop the couroutine after a sub_coroutine is finished. Using CO_AWAIT_RETURN.
 //It must be used in a branch or loop, or else it must be followed by CO_END.
@@ -264,13 +264,13 @@ public: \
     if(!(bool_exp)){CO_GOTO_NEXT_STATE; } \
     CO_AWAIT_ANY()
     
-#define CO_YILED_IF(bool_exp) CO_AWAIT_ANY_IF(bool_exp)
+#define CO_YIELD_IF(bool_exp) CO_AWAIT_ANY_IF(bool_exp)
 
 #define CO_AWAIT_ANY_BACK_IF(bool_exp) \
     if(!(bool_exp)){CO_GOTO_NEXT_STATE; } \
     CO_AWAIT_ANY_BACK()
 
-#define CO_YILED_BACK_IF(bool_exp) CO_YILED_BACK_IF(bool_exp)
+#define CO_YIELD_BACK_IF(bool_exp) CO_YIELD_BACK_IF(bool_exp)
 
 //Implement
 #define CO_AWAIT_MULTI_IMPL(sub_cort) {\
@@ -308,8 +308,6 @@ public: \
         typedef cort_state_name this_type;                               \
         static base_type* do_exec_static(cort_proto* this_ptr){return ((this_type*)(this_ptr))->do_exec();}\
         inline base_type* do_exec() { goto ____action_begin; ____action_begin:
-
-
                                                                                         
 #define CO_END  CO_RETURN; }}; }; \
     return ((cort_start_impl::__cort_begin*)this)->do_exec();
