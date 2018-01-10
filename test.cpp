@@ -1,5 +1,5 @@
 
-//Suppose we rent the cpu time in a strange old super computer and costing no more than 256 "clock" each time for example. 
+//Suppose we rent the cpu time in a strange old super computer and costing no more than 256 "clock" each time. 
 //So computing is enabled only after allowed and we need to divide our computing task into several one.
 //This is an example to simulate the IO operation that only enabled after select or (e)poll result.
 
@@ -48,51 +48,53 @@ struct fibonacci_cort : public cort_proto{
     }
 
     CO_DECL(fibonacci_cort)
-
-    cort_proto* start(){
-        CO_BEGIN 
-            if(++the_clock == 0){   //Oh you are not enabled to work now.
-                push_work(this);
-                CO_AGAIN;
-            }
-        
-            if(n < 2){
-                result = n;
-                CO_RETURN;
-            }
-            corts[0] = new fibonacci_cort(n-1);
-            corts[1] = new fibonacci_cort(n-2);
-
-            //They may cost much time so we should wait their result.
-            
-            if(false){
-                //You can skip await using CO_GOTO_NEXT_STATE
-                CO_GOTO_NEXT_STATE;
-            }
-            //CO_AWAIT_ALL(corts[0], corts[1]); //You can place no more than ten corts for CO_AWAIT_ALL.
-            //CO_AWAIT_RANGE(corts, corts+2);   //Or using forward iterator of coroutine pointer for variate count.
-            //CO_AWAIT(corts[0]); 
-            //CO_AWAIT(corts[1]);     //Or await one bye one. They must be put in different lines!
-            
-            //CO_AWAIT_ALL_IF(true, corts[0], corts[1]);
-            //CO_AWAIT_ALL_IF(cond, cort) means:
-            //if(!cond){CO_GOTO_NEXT_STATE;}
-            //CO_AWAIT_ALL(cort);
-            
-            //CO_AWAIT_RANGE_IF(true, corts, corts+2);
-            CO_AWAIT_IF(true, corts[0]); 
-            CO_AWAIT_IF(true, corts[1]);    
-            
-            if(++the_clock == 0){   //Oh you are not enabled to work now.
-                push_work(this);
-                CO_AGAIN;
-            }
-            result = corts[0]->result + corts[1]->result;
-            delete corts[0];
-            delete corts[1];
-        CO_END
-    }
+    
+    //This is the coroutine entrance.
+    cort_proto* start();
 };
+
+cort_proto* fibonacci_cort::start(){
+    CO_BEGIN 
+        if(++the_clock == 0){   //Oh you are not enabled to work now.
+            push_work(this);
+            CO_AGAIN;
+        }
+        if(n < 2){
+            result = n;
+            CO_RETURN;
+        }
+        corts[0] = new fibonacci_cort(n-1);
+        corts[1] = new fibonacci_cort(n-2);
+
+        //They may cost much time so we should wait their result.
+        
+        if(false){
+            //You can skip await using CO_SKIP_AWAIT
+            CO_SKIP_AWAIT;
+        }
+        CO_AWAIT_ALL(corts[0], corts[1]); //You can place no more than ten corts for CO_AWAIT_ALL.
+        //CO_AWAIT_RANGE(corts, corts+2);   //Or using forward iterator of coroutine pointer for variate count.
+        //CO_AWAIT(corts[0]); 
+        //CO_AWAIT(corts[1]);     //Or await one bye one. They must be put in different lines!
+        
+        //CO_AWAIT_ALL_IF(true, corts[0], corts[1]);
+        //CO_AWAIT_ALL_IF(cond, cort) means:
+        //if(!cond){CO_SKIP_AWAIT;}
+        //CO_AWAIT_ALL(cort);
+        
+        //CO_AWAIT_RANGE_IF(true, corts, corts+2);
+        //CO_AWAIT_IF(true, corts[0]); 
+        //CO_AWAIT_IF(true, corts[1]);    
+        
+        if(++the_clock == 0){   //Oh you are not enabled to work now.
+            push_work(this);
+            CO_AGAIN;
+        }
+        result = corts[0]->result + corts[1]->result;
+        delete corts[0];
+        delete corts[1];
+    CO_END
+}
 
 int main(int argc, char* argv[]){ 
     if(argc <= 1){
