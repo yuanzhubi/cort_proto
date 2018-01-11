@@ -205,7 +205,7 @@ public: \
     return this;   \
     CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
     
-#define CO_AWAIT_ANY_AGAIN() do{ \
+#define CO_AWAIT_ANY_BACK() do{ \
         this->set_wait_count(0); \
         this->set_run_function((run_type)(&do_exec_static)); \
     }while(false); \
@@ -270,7 +270,7 @@ public: \
     if(!(bool_exp)){CO_GOTO_NEXT_STATE; } \
     CO_AWAIT_ANY_BACK()
 
-#define CO_YIELD_BACK_IF(bool_exp) CO_YIELD_BACK_IF(bool_exp)
+#define CO_YIELD_BACK_IF(bool_exp) CO_AWAIT_ANY_BACK_IF(bool_exp)
 
 //Implement
 #define CO_AWAIT_MULTI_IMPL(sub_cort) {\
