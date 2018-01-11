@@ -291,7 +291,7 @@ public: \
         if(__the_sub_cort != 0){\
             __the_sub_cort->set_parent(this); \
             this->set_wait_count(1); \
-            this->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
+            this->set_run_function((run_type)(&cort_state_name::do_exec_static)); \
             return this; \
         }\
         goto ____action_end; \
