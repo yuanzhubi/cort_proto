@@ -93,6 +93,7 @@ protected:
         cort_parent = 0;
         data0.result_ptr = 0;
     }   
+    void on_await(){}
     ~cort_proto(){}                 //Only used as weak reference so public virtual destructor is not needed.
 };                                                                  
 
@@ -132,7 +133,7 @@ struct cort_example : public cort_proto{
 #define CO_DECL(...) \
 public: \
     typedef CO_EXPAND(CO_GET_1ST_ARG(__VA_ARGS__)) cort_type;  \
-    static base_type* start_static(cort_type *p) { return p->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();/*coroutine function name is start for default*/}                      \
+    static base_type* start_static(cort_proto *p) { return ((cort_type*)p)->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();/*coroutine function name is start for default*/}                      \
     cort_type* init() {                                        \
         set_run_function((run_type)(&start_static));           \
         return  this;                                          \
@@ -160,6 +161,7 @@ public: \
         if(current_wait_count != 0){ \
             this->set_wait_count(current_wait_count); \
             this->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
+            this->on_await(); \
             return this; \
         } \
     }while(false);\
@@ -170,6 +172,7 @@ public: \
 #define CO_AWAIT_RANGE(sub_cort_begin, sub_cort_end) do{ \
         if(cort_wait_range(this, sub_cort_begin, sub_cort_end) != 0){ \
             this->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
+            this->on_await(); \
             return this; \
         } \
     }while(false); \
@@ -182,6 +185,7 @@ public: \
             __the_sub_cort->set_parent(this); \
             this->set_wait_count(1); \
             this->set_run_function((run_type)(&this_type::do_exec_static)); \
+            this->on_await(); \
             return this; \
         }\
         goto ____action_begin; \
@@ -202,6 +206,7 @@ public: \
         this->set_wait_count(0); \
         this->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
     }while(false); \
+    this->on_await(); \
     return this;   \
     CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
     
@@ -209,6 +214,7 @@ public: \
         this->set_wait_count(0); \
         this->set_run_function((run_type)(&do_exec_static)); \
     }while(false); \
+    this->on_await(); \
     return this;   \
     CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
     
@@ -224,6 +230,7 @@ public: \
         if(__the_sub_cort != 0){\
             /*__the_sub_cort->set_parent(this->cort_parent); \
             Above codes is not needed */ \
+            this->on_await(); \
             return __the_sub_cort; \
         }\
     }while(false); \
@@ -236,6 +243,7 @@ public: \
 //Sometimes you want to execute current action again later. Using CO_AGAIN(). It can be used anywhere.
 #define CO_AGAIN do{ \
         this->set_run_function((run_type)(&this_type::do_exec_static));  \
+        this->on_await(); \
         return this; \
     }while(false)
 
@@ -292,6 +300,7 @@ public: \
             __the_sub_cort->set_parent(this); \
             this->set_wait_count(1); \
             this->set_run_function((run_type)(&cort_state_name::do_exec_static)); \
+            this->on_await(); \
             return this; \
         }\
         goto ____action_end; \
