@@ -497,10 +497,11 @@ int main(void)
             else{
                 write(1,buf,result);
                 last_time_out = 4095;
-                cort_timer_refresh_clock();
-                remove_poll_request();
-                clear_timeout();
-                //CO_AGAIN; It(CO_AGAIN) will be never resumed after remove_poll_request and clear_timeout.
+				set_timeout(last_time_out);
+                //cort_timer_refresh_clock();
+                //remove_poll_request();
+                //clear_timeout();
+                CO_AGAIN; 
             }
         CO_END
         }
