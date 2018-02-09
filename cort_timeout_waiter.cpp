@@ -8,9 +8,16 @@
 #include <list>
 #include <string.h>
 #include <signal.h>
+#include <errno.h>
 #include "cort_timeout_waiter.h"
 
+struct cort_timer;
+
 typedef cort_timeout_waiter::time_ms_t time_ms_t;
+static __thread int epfd = 0;
+static __thread cort_timer* eptimer = 0;
+
+static __thread uint32_t epollfd_total_count = 0;
 
 struct timeout_list;
 
@@ -57,13 +64,19 @@ struct cort_timer{
     std::map<time_ms_t, timeout_list > long_timer_search;
     timeout_list short_timer_search[short_timer_list_size];
     
+	cort_timeout_waiter_data* get_next_timer() const{
+		if(timer_size != 0){
+			return &eptimer->timer_heap[0]->data->back();
+		}
+		return 0;
+	}
     cort_timer(size_t capacity = heap_size_delta){
         timer_heap = (timeout_list **)malloc(capacity * sizeof(*timer_heap));
         timer_size = 0;
         timer_capacity = capacity;
         for(size_t i = 0; i<short_timer_list_size; ++i){
             short_timer_search[i].timeout = i;
-            short_timer_search[i].heap_pos = heap_npos;
+            //short_timer_search[i].heap_pos = heap_npos;
         }
     }
     
@@ -72,14 +85,14 @@ struct cort_timer{
             std::list<cort_timeout_waiter_data> *data = short_timer_search[i].data;
             for(std::list<cort_timeout_waiter_data>::iterator it = data->begin(), end = data->end();it != end; ){
                 cort_timeout_waiter_data *p = &(*it);
-                p->data->resume_on_stop(); //This function may erase any element, so we need to be careful to iterate the rest.
+                p->data->resume_on_stop(); //This function may erase any element(even p itself!), so we need to be careful to iterate the rest.
                 if(data->empty()){ // All are erased!
                     break;
                 }
                 it = data->begin();
-                if(p == &(*it)){ // != means it is erased!
+                if(p == &(*it)){ // == means it is not erased!
                     ++it;
-                    p->data->clear_timeout();
+                    p->data->clear_timeout();// "--it" is erased in the function.
                 }
             }
         }
@@ -164,29 +177,20 @@ struct cort_timer{
             }
             timeout_list* left_data = timer_heap[left_pos];
             time_ms_t left_time = left_data->data->back().end_time;         
-            size_t right_pos = left_pos+1;
-            if(right_pos >= timer_size){
-                goto left_cmp;
-            }{   //avoid goto warning
+            size_t right_pos = left_pos + 1;
+            if(right_pos < timer_size){
                 timeout_list* right_data = timer_heap[right_pos];
                 time_ms_t right_time = right_data->data->back().end_time;           
-                if(left_time <= right_time){
-                    goto left_cmp;
-                }
-                if(right_time < my_time){
-                    timer_heap[old_pos] = right_data;
-                    right_data->heap_pos = old_pos;
-                    old_pos = right_pos;
-                }
-                else{
-                    break;
+                if(left_time > right_time){
+                    left_data = right_data;
+					left_time = right_time;
                 }
             }
-left_cmp:
             if(left_time < my_time){
                 timer_heap[old_pos] = left_data;
                 left_data->heap_pos = old_pos;
                 old_pos = left_pos;
+				continue;
             }
             else{
                 break;
@@ -212,11 +216,14 @@ left_cmp:
     
     void update_time_out(size_t pos){
         timeout_list* pos_data = timer_heap[pos];
-        if(pos_data->data->empty()){
+        co_unlikely_if(pos_data->data->empty()){
             --timer_size;
             if(timer_size != 0){
-                timeout_list* new_pos_data = (timer_heap[pos] = timer_heap[timer_size]);
-                down_update_heap(pos, new_pos_data->data->back().end_time);
+				if(pos != timer_size){
+					timeout_list* new_pos_data = (timer_heap[pos] = timer_heap[timer_size]);
+					new_pos_data->heap_pos = pos;
+					down_update_heap(pos, new_pos_data->data->back().end_time);
+				}
             }
             if(pos_data->timeout >= short_timer_list_size){
                 long_timer_search.erase(pos_data->timeout);
@@ -257,26 +264,22 @@ left_cmp:
     }
 };
 
-static __thread int epfd = 0;
-static __thread cort_timer* eptimer = 0;
-
-void cort_timer_init(){
+int cort_timer_init(){
+	if(eptimer != 0){
+		return -1;
+	}
+	epollfd_total_count = 0;
+	eptimer = new cort_timer();
     epfd = epoll_create(1);
     if(epfd <= 0){
-        exit(-1);
+        return -1;
     }
-    try{
-        eptimer = new cort_timer();
-    }
-    catch(...){
-        close(epfd);
-    }
-    
     signal(SIGHUP,  SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
     signal(SIGTTOU, SIG_IGN);
     signal(SIGTTIN, SIG_IGN);
     signal(SIGCHLD, SIG_IGN);
+	return 0;
     //signal(SIGINT,  SIG_IGN);
     //signal(SIGTERM, SIG_IGN);
     //daemon(1, 1);
@@ -284,8 +287,10 @@ void cort_timer_init(){
 void cort_timer_destroy(){
     if(epfd > 0){
         close(epfd);
+		epfd = 0;
     }
     delete eptimer;
+	eptimer = 0;
 }
 
 #if defined( __USE_RDTSCP__) 
@@ -310,7 +315,7 @@ static inline time_ms_t getCpuKhz()
     fclose(fp);
     char *lp = strstr(buf,"cpu MHz");
     if(!lp) return 1;
-    lp += /*strlen("cpu MHz")*/7;
+    lp += sizeof("cpu MHz") - 1;
     while(*lp == ' ' || *lp == '\t' || *lp == ':'){
         ++lp;
     }
@@ -349,87 +354,125 @@ int cort_get_poll_fd(){
 
 int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
     const static int max_wait_count = 4*1024;
-    struct epoll_event events[max_wait_count];                    //ev用于注册事件
-    cort_timer_refresh_clock();
-    time_ms_t start_poll_time = current_ms;
+    struct epoll_event events[max_wait_count];                   
     do{
-        if(until_ms <= current_ms){
-            return -1;
-        }
-        int nfds = epoll_wait(epfd, events, max_wait_count, (int)(until_ms - current_ms));
+		int wait_time;
+        if(until_ms <= cort_timer_refresh_clock()){
+			if(until_ms == 0){
+				wait_time = 1*1000;
+			}
+			else{
+				return -1;
+			}
+        }else{
+			wait_time = int(until_ms - current_ms);
+		}
+		if(epfd == 0){
+			return 0;
+		}
+        int nfds = epoll_wait(epfd, events, max_wait_count, wait_time);
         cort_timer_refresh_clock();
         if(nfds == 0){
             return -1;
         }
-        if(nfds == max_wait_count){
-            continue;
-        }
         if(nfds < 0){//EINTR?
             continue;
         }
-        for(int i = 0; i < nfds; i++)
-        {
+        for(int i = 0; i < nfds; i++){
             ((cort_fd_waiter*)events[i].data.ptr)->resume_on_poll(events[i].events);
+			if(epfd == 0){
+				return 0;
+			}
+        }
+		if(nfds == max_wait_count){
+            continue;
         }
     }while(false);
-    return cort_timer_refresh_clock() - start_poll_time;
+    return 0;
 }
 
 void cort_timer_loop(){
-    while(eptimer->timer_size != 0){
-        cort_timeout_waiter_data& tref = eptimer->timer_heap[0]->data->back();
-        int result = cort_timer_poll(tref.end_time);
-        if(result < 0){
-            tref.data->resume_on_timeout();
-        }
-    }
+	while(true){
+		if(eptimer == 0){
+			break;
+		}
+		
+		for(cort_timeout_waiter_data* ptimer =  eptimer->get_next_timer();ptimer != 0;ptimer =  eptimer->get_next_timer()){
+			int result = cort_timer_poll(ptimer->end_time);
+			if(result < 0){
+				ptimer->data->resume_on_timeout();
+			}
+			if(eptimer == 0){
+				break;
+			}
+		}
+		if(epollfd_total_count != 0){
+			cort_timer_poll(0);
+			continue;
+		}
+		break;
+	}
 }
 
-time_ms_t cort_timeout_waiter::get_time_past() const{
-    return cort_timer_now_ms() - (data_time.start_time_ms & ((timeout_masker | stopped_masker) - 1));
+uint32_t cort_timeout_waiter::get_time_past() const{
+    return (uint32_t)(cort_timer_now_ms() - start_time_ms);
 }
 
 cort_timeout_waiter::cort_timeout_waiter(){
     that = 0;
-    data_time.start_time_ms = 0;
+    start_time_ms = 0;
+	time_cost_ms = 0;
+	ref_count = 0;
 }
 
 cort_timeout_waiter::~cort_timeout_waiter(){
     if(that != 0 && eptimer != 0){
         eptimer->remove_timer(that);
     }
-    delete that;
+}
+
+time_ms_t cort_timeout_waiter::get_timeout_time() const {
+	return that->end_time;
 }
 
 void cort_timeout_waiter::clear_timeout(){
-    if(that != 0){
+    if(that != 0 && eptimer != 0){
         eptimer->remove_timer(that);
         that = 0;
     }
 }
-cort_proto* cort_timeout_waiter::on_finish(){
-    data_time.start_time_ms = cort_timer_now_ms() - (data_time.start_time_ms & ((timeout_masker | stopped_masker) - 1));
-    return 0;
+void cort_timeout_waiter::on_finish(){
+    time_cost_ms = (time_cost_ms & normal_masker) | ((time_cost_ms_t)(cort_timer_now_ms() - start_time_ms));
+    clear_timeout();
+	cort_proto::on_finish();
 }
 void cort_timeout_waiter::set_timeout(time_ms_t timeout_ms){
     clear_timeout();
-    this->data_time.start_time_ms = cort_timer_now_ms();
-    that = eptimer->add_timer(this, timeout_ms);
+	time_cost_ms = 0;
+	start_time_ms = cort_timer_now_ms();
+	that = eptimer->add_timer(this, timeout_ms);
 }
 
 void cort_timeout_waiter::clear(){
-    clear_timeout();
+    start_time_ms = 0;
+	time_cost_ms = 0;
+	clear_timeout();
     cort_proto::clear();
 }
 
 void cort_timeout_waiter::resume_on_timeout(){  
-    data_time.start_time_ms |= timeout_masker;
+	this->clear_timeout();
+    time_cost_ms = timeout_masker;
     this->resume();
 }
 
 void cort_timeout_waiter::resume_on_stop(){ 
-    data_time.start_time_ms |= stopped_masker;
+	time_cost_ms = stopped_masker;
     this->resume();
+}
+
+cort_fd_waiter::~cort_fd_waiter(){
+	close_cort_fd();
 }
 
 void cort_fd_waiter::resume_on_poll(uint32_t poll_event){
@@ -437,95 +480,47 @@ void cort_fd_waiter::resume_on_poll(uint32_t poll_event){
     this->resume();
 }
 
-int cort_fd_waiter::set_poll_request(int arg_fd, uint32_t arg_poller_event){
-    cort_fd = arg_fd;
+int cort_fd_waiter::set_poll_request(uint32_t arg_poll_request){
+	clear_poll_result();
+	if(poll_request == arg_poll_request){
+		return 0;
+	}
     struct epoll_event event;
     event.data.ptr = this;
-    event.events = arg_poller_event;
-    return epoll_ctl(cort_get_poll_fd(), EPOLL_CTL_ADD, arg_fd, &event);
-}
-
-int cort_fd_waiter::reset_poll_request(uint32_t arg_poller_event){
-    struct epoll_event event;
-    event.data.ptr = this;
-    event.events = arg_poller_event;
-    return epoll_ctl(cort_get_poll_fd(), EPOLL_CTL_ADD, cort_fd, &event);
+    event.events = arg_poll_request;
+	int result = 0; 
+	if(poll_request == 0){
+		result = epoll_ctl(epfd, EPOLL_CTL_ADD, cort_fd, &event);
+		if(result == 0){
+			++epollfd_total_count;
+		}
+	}
+	else{
+		result = epoll_ctl(epfd, EPOLL_CTL_MOD, cort_fd, &event);
+	}
+	poll_request = arg_poll_request;
+    return result;
 }
 
 int cort_fd_waiter::remove_poll_request(){
-    struct epoll_event event;
-    return epoll_ctl(cort_get_poll_fd(), EPOLL_CTL_DEL, cort_fd, &event);
+	struct epoll_event event;
+    int result = epoll_ctl(epfd, EPOLL_CTL_DEL, cort_fd, &event);
+	if(result == 0 && poll_request != 0){
+		--epollfd_total_count;
+		poll_request = 0;
+	}
+	return result;
 }
 
-#ifdef TIMEOUT_TEST
-int main(void)
-{
-    struct stdio_echo_test : public cort_fd_waiter{
-        int last_time_out;
-        struct epoll_event ev;
-        CO_DECL(stdio_echo_test)
-        cort_proto* start(){
-        CO_BEGIN
-            set_poll_request(0, EPOLLIN|EPOLLHUP);
-            last_time_out = 5000;
-            set_timeout(last_time_out);
-            CO_YIELD();
-            if(is_timeout()){
-                printf("timeout! %dms cost\n", (int)get_time_past());
-                set_timeout((++last_time_out)%256); //We will check the timer accuracy.
-                CO_AGAIN;   
-            }
-            if(is_stopped()){
-                puts("current coroutine is canceled!");
-                clear_timeout();
-                CO_RETURN;
-            }
-            if(get_poll_result() != EPOLLIN){
-                remove_poll_request();
-                clear_timeout();
-                puts("exception happened?");
-                CO_RETURN;
-            }
-            
-            char buf[1024];
-            int result = read(0, buf, 1023);
-            if(result < 0){
-                remove_poll_request();
-                clear_timeout();
-                puts("read exception?");
-            }
-            else{
-                write(1,buf,result);
-                last_time_out = 4095;
-				set_timeout(last_time_out);
-                //cort_timer_refresh_clock();
-                //remove_poll_request();
-                //clear_timeout();
-                CO_AGAIN; 
-            }
-        CO_END
-        }
-    }test_cort0, test_cort1;
-    cort_timer_init();
-    test_cort0.start();
-    cort_timer_loop();
-    test_cort1.start();
-    cort_timer_loop();
-    test_cort0.start();
-    test_cort1.start();
-    //Test cort_timer_destroy without loop before!
-    //cort_timer_loop();
-    //Then the couroutine should be stopped after destroy.
-    cort_timer_destroy();
-    cort_timer_init();
-    test_cort1.start();
-    cort_timer_loop();
-    cort_timer_destroy();
-    cort_timer_init();
-    test_cort0.start();
-    cort_timer_destroy();
-    puts("finished"); //valgrind test past
-    return 0;
+void cort_fd_waiter::close_cort_fd(){
+	if(cort_fd > -1){
+		if(poll_request != 0){
+			--epollfd_total_count;
+		}
+		close(cort_fd);
+	}
+	cort_fd = -1;
+	poll_request = 0;
+	poll_result = 0;
 }
 
-#endif

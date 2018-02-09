@@ -7,14 +7,23 @@
 
 #if defined(__GNUC__)
 #define CO_TYPE_OF __typeof__
+#define co_likely_if(x)    if(__builtin_expect(!!(x), 1))
+#define co_unlikely_if(x)  if(__builtin_expect(!!(x), 0))
 #else
 #define CO_TYPE_OF decltype
+#define co_likely_if(x)    if(x)
+#define co_unlikely_if(x)  if(x)
 #endif
 
+#define __thread
 struct cort_proto{ 
     typedef cort_proto* (*run_type)(cort_proto*);
     typedef cort_proto base_type;
-
+	
+	run_type get_run_function() const {
+		return data0.run_function;
+	}
+	
     void set_run_function(run_type arg){
         data0.run_function = arg;
     }
@@ -29,13 +38,20 @@ struct cort_proto{
         return arg(this);
     }
     
+	void remove_parent(){
+		cort_parent = 0;
+	}
     void set_parent(cort_proto *arg){
         cort_parent = arg;
     }
     cort_proto *get_parent() const{
         return cort_parent;
     }
-    
+	
+    size_t get_wait_count() const{
+        return this->data1.wait_count;
+    }
+	
     void set_wait_count(size_t wait_count){
         this->data1.wait_count = wait_count;
     }
@@ -53,15 +69,16 @@ struct cort_proto{
         if(__the_sub_cort != 0){
             __the_sub_cort->set_parent(this); 
             this->incr_wait_count(1); 
-            return this; 
+            return __the_sub_cort; 
         }
+		return 0;
     }
     
     void resume() {
         //We save the cort_parent before run_function. So you can "delete this" in your subclass overloaded on_finish function after parent class on_finish function is called and return 0.
         cort_proto* cort_parent_save = cort_parent;
         if((*(this->data0.run_function))(this) == 0 && cort_parent_save != 0 && (--(cort_parent_save->data1.wait_count)) == 0){
-                cort_parent_save->resume();
+            cort_parent_save->resume();
         }
     }
     
@@ -77,6 +94,7 @@ protected:
     union{
         size_t wait_count;
         run_type leaf_cort_run_function;
+		cort_proto* real_cort_parent;
     }data1;
     cort_proto* cort_parent;
 
@@ -85,19 +103,14 @@ public: //Following members should be protected, however the subclass defined in
         cort_parent = 0;
         data0.run_function = 0;
     }
-    
-    bool is_finished() const{
-        return data0.run_function == 0;
-    }
 
-protected:
     cort_proto(){
         //We do not use initialize list because we want to remove the initialize order limit.
         cort_parent = 0;
         data0.run_function = 0;
         data1.leaf_cort_run_function = 0;
     }   
-    ~cort_proto(){}                 //Only used as weak reference so public virtual destructor is not needed.
+    virtual ~cort_proto(){}                 //Only used as weak reference so public virtual destructor is not needed.
 };                                                                  
 
 struct cort_virtual : public cort_proto{
@@ -217,7 +230,7 @@ public: \
             __the_sub_cort->set_parent(this); \
             this->set_wait_count(1); \
             this->set_run_function((run_type)(&this_type::do_exec_static)); \
-            return this; \
+            return __the_sub_cort; \
         }\
         goto ____action_begin; \
     }while(false); \
@@ -283,18 +296,21 @@ public: \
 //3. cort_proto::await is also disabled
 #define CO_SELF_AWAIT(member_func_name) \
     do{ \
-        set_self_await_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
-        return this->member_func_name();\
+		cort_proto * result = this->member_func_name(); \
+		if(result != 0){ \
+			set_self_await_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
+			return result; \
+		}  \
     }while(false); \
-    CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
+	CO_NEXT_STATE
 
 //If current function is waited by CO_SELF_AWAIT, using CO_SELF_RETURN instead of CO_RETURN to avoid on_finish called twice.
 #define CO_SELF_RETURN \
     do{ \
-        if(data1.leaf_cort_run_function == 0){ \
-            CO_RETURN; \
+        if(data1.leaf_cort_run_function != 0){ \
+            return resume_self_await(); \
         } \
-        return resume_self_await(); \
+        return 0; \
     }while(false); 
     
 //Sometimes you want to execute current action again later. Using CO_AGAIN(). It can be used anywhere in a coroutine non-static member function.

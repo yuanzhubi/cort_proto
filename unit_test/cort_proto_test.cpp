@@ -1,4 +1,4 @@
-
+#ifdef CORT_PROTO_TEST
 //Suppose we rent the cpu time in a strange old super computer and costing no more than 256 "clock" each time. 
 //So computing is enabled only after allowed and we need to divide our computing task into several one.
 //This is an example to simulate the IO operation that only enabled after select or (e)poll result.
@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stack>
-#include "cort_proto.h"
+#include "../cort_proto.h"
 
 std::stack<cort_proto*> scheduler_list;
 unsigned char the_clock = 1;
@@ -72,7 +72,7 @@ cort_proto* fibonacci_cort::start(){
             //You can skip await using CO_SKIP_AWAIT
             CO_SKIP_AWAIT;
         }
-        CO_AWAIT_ALL(corts[0], corts[1]); //You can place no more than ten corts for CO_AWAIT_ALL.
+        //CO_AWAIT_ALL(corts[0], corts[1]); //You can place no more than ten corts for CO_AWAIT_ALL.
         //CO_AWAIT_RANGE(corts, corts+2);   //Or using forward iterator of coroutine pointer for variate count.
         //CO_AWAIT(corts[0]); 
         //CO_AWAIT(corts[1]);     //Or await one bye one. They must be put in different lines!
@@ -82,10 +82,10 @@ cort_proto* fibonacci_cort::start(){
         //if(!cond){CO_SKIP_AWAIT;}
         //CO_AWAIT_ALL(cort);
         
-        //CO_AWAIT_RANGE_IF(true, corts, corts+2);
+        CO_AWAIT_RANGE_IF(true, corts, corts+2);
         //CO_AWAIT_IF(true, corts[0]); 
         //CO_AWAIT_IF(true, corts[1]);    
-        
+
         if(++the_clock == 0){   //Oh you are not enabled to work now.
             push_work(this);
             CO_AGAIN;
@@ -105,9 +105,10 @@ int main(int argc, char* argv[]){
     }
     fibonacci_cort main_task(argc);
     main_task.start();
-    while(pop_execute_work()){
+    while(pop_execute_work()){ //Generator mode? Just a toy.
         //sleep(1);
     }
     printf("%d\n", main_task.result);
     return 0;
 }
+#endif
