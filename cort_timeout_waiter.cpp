@@ -274,6 +274,7 @@ int cort_timer_init(){
     if(epfd <= 0){
         return -1;
     }
+	cort_timer_refresh_clock();
     signal(SIGHUP,  SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
     signal(SIGTTOU, SIG_IGN);

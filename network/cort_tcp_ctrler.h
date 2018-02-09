@@ -132,6 +132,9 @@ struct send_buffer_ctrl{
 		send_data[index].iov_base = src_buffer;
 		send_data[index].iov_len = arg_size;
 		send_data_tag[index] = 1<<31;
+		if(index != max_send_queue_size - 1){
+			send_data[index+1].iov_base = 0;
+		}
 		return src_buffer;
 	}
 
@@ -141,10 +144,14 @@ struct send_buffer_ctrl{
 		if(index == max_send_queue_size){
 			return 0;
 		}
-		send_data[index].iov_base = (char*)malloc(arg_size);
+		char* result = (char*)malloc(arg_size);
+		send_data[index].iov_base = result;
 		send_data[index].iov_len = arg_size;
 		send_data_tag[index] = 0;
-		return (char*)send_data[index].iov_base;
+		if(index != max_send_queue_size - 1){
+			send_data[index+1].iov_base = 0;
+		}
+		return result;
 	}
 	
 	//strong reference
@@ -159,6 +166,9 @@ struct send_buffer_ctrl{
 		}
 		send_data[index].iov_len = arg_size;
 		send_data_tag[index] = 0;
+		if(index != max_send_queue_size - 1){
+			send_data[index+1].iov_base = 0;
+		}
 		return result;
 	}
 	

@@ -30,8 +30,8 @@ int main(int argc, char* argv[]){
 					cort_test0.set_timeout(atoi(argv[3]));
 					cort_test1.set_timeout(atoi(argv[3]));
 				}else{
-					cort_test0.set_timeout(30);
-					cort_test1.set_timeout(30);
+					cort_test0.set_timeout(300);
+					cort_test1.set_timeout(100);
 				}
 				if(argc >= 5){
 					cort_test0.set_keep_alive(atoi(argv[4]));
