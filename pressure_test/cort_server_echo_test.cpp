@@ -7,6 +7,7 @@ unsigned int error_count_total;
 unsigned int success_count_total;
 unsigned int total_time_cost;
 
+//print the server quality.
 struct print_result_cort: public cort_auto_delete{
 	CO_DECL(print_result_cort)
 	cort_proto* start(){
@@ -21,6 +22,7 @@ struct print_result_cort: public cort_auto_delete{
 	}
 };
 
+//server
 struct cort_tcp_echo_server : cort_tcp_ctrler{
 	CO_DECL(cort_tcp_echo_server)
 	static recv_buffer_ctrl::recv_buffer_size_t recv_check_function(recv_buffer_ctrl* arg, cort_tcp_ctrler* p){
@@ -71,6 +73,8 @@ struct cort_tcp_echo_server : cort_tcp_ctrler{
 		CO_END
 	}
 };
+
+//You can enter ctrl+d to close the server elegantly.
 #include <sys/epoll.h>
 struct stdio_switcher : public cort_fd_waiter{
 	CO_DECL(stdio_switcher)
@@ -107,7 +111,8 @@ int main(int argc, char* argv[]){
 	listener1.set_listen_port(8889);
 	listener2.set_listen_port(8890);
 	uint8_t err_code;
-
+	
+	//cort_tcp_server_waiter is the default server waiter.
 	listener.set_ctrler_creator<cort_tcp_echo_server, cort_tcp_server_waiter>();
 	listener1.set_ctrler_creator<cort_tcp_echo_server, cort_tcp_server_waiter>();
 	listener2.set_ctrler_creator<cort_tcp_echo_server, cort_tcp_server_waiter>();
@@ -125,7 +130,7 @@ int main(int argc, char* argv[]){
 	}
 	switcher.start();
 	cort_repeater<print_result_cort> logger;
-	logger.set_repeat_per_second(1);
+	logger.set_repeat_per_second(1); //We output the server quality per second.
 	logger.start();
 	cort_timer_loop();
 	cort_timer_destroy();
