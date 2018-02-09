@@ -13,3 +13,7 @@
 /.vs/cort_proto/v15/Browse.VC.opendb
 /.vs/cort_proto/v15/Browse.VC.db
 /.vs/cort_proto/v15/.suo
+/libcort_proto.a
+/cort_timeout_waiter.o
+/cort_tcp_listener.o
+/cort_tcp_ctrler.o
