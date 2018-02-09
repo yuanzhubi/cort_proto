@@ -4,7 +4,6 @@
 
 /unit_test/cort_timeout_waiter_test
 /unit_test/cort_tcp_ctrler_test
-/pressure_test_gen.sh
 /pressure_test/cort_server_echo_test
 /pressure_test/cort_proto_test
 /pressure_test/cort_client_echo_test
