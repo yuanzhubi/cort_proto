@@ -114,7 +114,7 @@ struct stdio_switcher : public cort_fd_waiter{
 
 int main(int argc, char* argv[]){
 	cort_timer_init();
-	printf( "This will start a curl client test. Press ctrl+d to stop. \n"
+	printf( "This will start a curl client test(The not hooked version can not elegant quit and is with poor performance). Press ctrl+d to stop. \n"
 			"arg1: ip, default: 103.7.30.118 \n"
 		    "arg2: query per second, default: 100 \n"
 	);
