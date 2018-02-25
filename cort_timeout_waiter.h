@@ -4,6 +4,11 @@
 #include <stdint.h>
 #include "cort_proto.h"
 
+#if defined(__x86_64__) || defined(__i386__)
+#define CO_USE_RDTSC //using rdtsc to get clock
+
+#endif
+
 struct cort_timeout_waiter_data;
 
 //cort_timeout_waiter must be leaf coroutine. Because if you await other coroutine, time out limit may be disobeyed.
@@ -62,6 +67,9 @@ public:
 		default:
 			return --this->ref_count;
 		}
+	}
+	bool is_set_timeout() const{
+		return (that != 0) ;
 	}
 	time_ms_t get_timeout_time() const;
 	uint32_t get_time_past() const; 	
@@ -181,6 +189,7 @@ public:
 	int remove_poll_request();
     
 	void close_cort_fd();
+	void remove_cort_fd();
     
     void set_cort_fd(int fd){
         cort_fd = fd;
@@ -197,7 +206,11 @@ public:
 	void clear_poll_result() {
         poll_result = 0;
     }
+	void set_poll_result(uint32_t new_poll_result) {
+        poll_result = new_poll_result;
+    }
     void resume_on_poll(uint32_t poll_event);
+	static uint32_t cort_waited_fd_count_thread();
 };
 
 //Usual program stages:
@@ -265,9 +278,11 @@ struct cort_repeater : public cort_timeout_waiter{
 			type = 1000;
 		}
 		index = 0;
+		real_cort_count = 0;
 	}
 	void stop(){
 		clear_timeout();
+		real_cort_count = 0;
 		interval_count = 0;
 		first_interval_count = 0;
 		
@@ -279,16 +294,41 @@ struct cort_repeater : public cort_timeout_waiter{
 	}
 	cort_proto* start(){
 		last_time = cort_timer_now_ms();
+		start_time = 0;
 		CO_BEGIN
 			if(!this->is_stopped() && type != 65535){
-				if(index == 0){
-					start_time = (unsigned int)cort_timer_now_ms(); 
-				}
-				unsigned int now_time = (unsigned int)cort_timer_now_ms();
 				switch(type){
 					case 0:{
-						this->set_timeout(10);	
-						index = (index + 1)%100;
+						this->set_timeout(10);
+					}
+					break;
+					case 1:{
+						unsigned int real_interval = ((index < first_interval)?(interval+1):interval);
+						this->set_timeout(real_interval);
+					}
+					break;
+					case 1000:{
+						unsigned int real_interval = ((index < first_interval)?(interval+1000):interval);
+						this->set_timeout(real_interval);
+					}
+					default:
+					break;
+				}
+						
+				unsigned int now_time = (unsigned int)cort_timer_now_ms();
+				if(index == 0 && type <= 1){
+					if(start_time != 0){ //We may be delayed and we need to fix.
+						now_time = (unsigned int)cort_timer_refresh_clock();
+						int fix_count = (int)(((now_time - start_time) / 1000.0) * req_count ) - real_cort_count; 
+						while(fix_count-- > 0){
+							(new T())->cort_start();
+						}
+					}
+					start_time = (unsigned int)cort_timer_refresh_clock(); 
+					real_cort_count = 0;
+				}
+				switch(type){
+					case 0:{							
 						if(now_time - last_time > 200){
 							last_time = now_time;
 							index = 0;
@@ -296,48 +336,23 @@ struct cort_repeater : public cort_timeout_waiter{
 						}
 						last_time = now_time;
 						unsigned int real_count = ((index < first_interval_count)?(interval_count+1):interval_count);
+						index = (index + 1)%100;
 						for(unsigned int i = 0; i <real_count; ++i){
 							(new T())->cort_start();
-						}
-						if(index == 0){	//We will fix at last because the timer is not accurate!
-							now_time = (unsigned int)cort_timer_refresh_clock();
-							int time_diff = (int)(now_time - start_time - 1000); 
-							if(time_diff > 0){
-								int fix_count = (int)(time_diff * req_count / 1000.0);
-								if(fix_count >= 1){
-									for(int i = 0; i <fix_count; ++i){
-										(new T())->cort_start();
-									}
-								}
-							}
+							++real_cort_count;
 						}
 					}
 					break;
-					case 1:{
-						unsigned int real_interval = ((index < first_interval)?(interval+1):interval);
-						this->set_timeout(real_interval);	
+					case 1:{							
 						index = (index + 1)%interval_count;
-						
 						last_time = now_time;
 						(new T())->cort_start();
-						if(index == 0){	//We will fix at last because the timer is not accurate!
-							now_time = (unsigned int)cort_timer_refresh_clock();
-							int time_diff = (int)((unsigned int)cort_timer_now_ms() - start_time - 1000); 
-							if(time_diff > 0){
-								int fix_count = (int)(time_diff * req_count / 1000.0);
-								if(fix_count >= 1){
-									for(int i = 0; i <fix_count; ++i){
-										(new T())->cort_start();
-									}
-								}
-							}
-						}
+						++real_cort_count;
 					}
 					break;
-					case 1000:{
-						unsigned int real_interval = ((index < first_interval)?(interval+1000):interval);
+					case 1000:{						
 						(new T())->cort_start();
-						this->set_timeout(real_interval);
+						++real_cort_count;
 						index = (index + 1)%interval_count;
 					}
 					break;
@@ -349,6 +364,7 @@ struct cort_repeater : public cort_timeout_waiter{
 		CO_END
 	}
 	double req_count;
+	unsigned int real_cort_count;
 	unsigned int start_time; 
 	unsigned int last_time; 
 	unsigned int interval_count;

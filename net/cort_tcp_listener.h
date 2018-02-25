@@ -6,10 +6,12 @@
 template<typename connection_t, typename connection_waiter_t>
 struct tcp_ctrler_static_creator{
 	typedef tcp_ctrler_static_creator<connection_t, connection_waiter_t> this_type;
-	static void create(int fd, int dest_ip, int dest_port, cort_tcp_connection_waiter* waiter = 0){
+	static void create(int fd, int dest_ip, int dest_port, cort_tcp_connection_waiter* waiter, uint32_t init_poll_result){
 		connection_t* result = new connection_t();
 		if(waiter == 0) {
 			waiter = new connection_waiter_t(fd);
+		}
+		if(init_poll_result != 0){
 		}
 		result->set_connection_waiter(waiter);
 		result->set_dest_addr(dest_ip, dest_port);
@@ -45,7 +47,7 @@ public:
 	void set_ctrler_creator(){
 		ctrler_creator = tcp_ctrler_static_creator<accept_cort_type, connection_waiter_t>::create;
 	}
-	void set_ctrler_creator(void (*ctrler_creator_arg)(int accept_fd, int dest_ip, int dest_port, cort_tcp_connection_waiter* waiter)){
+	void set_ctrler_creator(void (*ctrler_creator_arg)(int accept_fd, int dest_ip, int dest_port, cort_tcp_connection_waiter* waiter, uint32_t init_poll_result)){
 		ctrler_creator = ctrler_creator_arg;
 	}
 	void pause_accept();
@@ -59,25 +61,49 @@ public:
 	cort_proto* start();
 	
 	//We provide a default policy when accepting faces socket create or socket buffer allocation error: 
-	//1. First, stop listen.
-	//2. Second, sleep 1s.
-	//3. Try to listen again. If failed, goto 2.
+	//1. First, stop accept.
+	//2. Second, sleep 500ms.
+	//3. Try to accept again. If failed, goto 2.
 	virtual cort_proto* on_accept_error();
 	
 	virtual void on_accept(int accept_fd){} ;
 private:
 	void set_timeout(time_ms_t timeout_ms); //We disable user set_timeout. The cort should be never finish unless you call stop_listen or destruct it.
-	void (*ctrler_creator)(int accept_fd, int dest_ip, int dest_port, cort_tcp_connection_waiter* waiter);
+	void (*ctrler_creator)(int accept_fd, int dest_ip, int dest_port, cort_tcp_connection_waiter* waiter, uint32_t init_poll_result);
 	int backlog;
 	uint16_t listen_port;
 	uint8_t errnum;
+	union{
+		struct{
+			uint8_t enable_no_delay:1;
+			uint8_t enable_close_by_reset:1;
+			uint8_t disable_reuse_address:1 ;
+			uint8_t enable_accept_after_recv:1;
+		}_;
+		uint8_t data;
+	}setsockopt_arg;
+public:
+	void set_enable_no_delay(uint8_t value = 1){
+		setsockopt_arg._.enable_no_delay = value;
+	}
+	
+	void set_enable_close_by_reset(uint8_t value = 1){
+		setsockopt_arg._.enable_close_by_reset = value;
+	}
+	
+	void set_disable_reuse_address(uint8_t value = 1){
+		setsockopt_arg._.disable_reuse_address = value;
+	}
+	void set_enable_accept_after_recv(uint8_t value = 1){
+		setsockopt_arg._.enable_accept_after_recv = value;
+	}
 };
 
 struct cort_tcp_server_waiter : public cort_tcp_connection_waiter{
 	cort_tcp_server_waiter(int fd){
 		set_cort_fd(fd);
 	}
-	void (*ctrler_creator)(int accept_fd, int dest_ip, int dest_port, cort_tcp_connection_waiter* waiter);
+	void (*ctrler_creator)(int accept_fd, int dest_ip, int dest_port, cort_tcp_connection_waiter* waiter, uint32_t init_poll_result);
 	virtual void keep_alive(uint32_t keep_alive_time, uint32_t ip_arg, uint16_t port_arg, uint16_t type_key_arg);
 };
 

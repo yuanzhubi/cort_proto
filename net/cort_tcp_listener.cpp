@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
 #include <stdio.h>
 
 #include "cort_tcp_listener.h"
@@ -19,6 +20,7 @@
 cort_tcp_listener::cort_tcp_listener(){
 	backlog = 0;
 	listen_port = 0;
+	setsockopt_arg.data = 0;
 	errnum = 0;
 }
 
@@ -53,12 +55,14 @@ uint8_t cort_tcp_listener::listen_connect(){
 		close(sockfd);
 		RETURN_ERROR(cort_socket_error_codes::SOCKET_CREATE_ERROR);
 	}
+	flag = 1;
+	if(setsockopt_arg._.disable_reuse_address == 0){
+		setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
+	}
 	
-	int cort_yes = 1;
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &cort_yes, sizeof(cort_yes)) < 0){
-		close(sockfd);
-		RETURN_ERROR(cort_socket_error_codes::SOCKET_CREATE_ERROR);
-    }
+	if(setsockopt_arg._.enable_accept_after_recv != 0){
+		setsockopt(sockfd, IPPROTO_TCP, TCP_DEFER_ACCEPT, &flag, sizeof(flag));
+	}
 	
 	struct sockaddr_in bindaddr;
 	bindaddr.sin_port = htons(listen_port);
@@ -88,12 +92,12 @@ uint8_t cort_tcp_listener::listen_connect(){
 cort_proto* cort_tcp_listener::start(){
 	CO_BEGIN
 		if(get_cort_fd() < 0 && listen_connect() != 0){
-			set_errno(cort_socket_error_codes::SOCKET_CREATE_ERROR);
+			set_errno(cort_socket_error_codes::SOCKET_LISTEN_ERROR);
 			CO_RETURN;
 		}
 		CO_YIELD();
 		if(is_timeout_or_stopped()){
-			set_errno(cort_socket_error_codes::SOCKET_OPERATION_TIMEOUT);
+			set_errno(cort_socket_error_codes::SOCKET_LISTEN_ERROR);
 			stop_listen();
 			CO_RETURN;	
 		}
@@ -116,13 +120,35 @@ cort_proto* cort_tcp_listener::start(){
 				close(accept_fd);
 				CO_AGAIN;
 			}
-			ctrler_creator(accept_fd, servaddr.sin_addr.s_addr, servaddr.sin_port);
+			if(setsockopt_arg._.enable_no_delay > 0){
+				int flag = 1;
+				setsockopt(accept_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
+			}
+			if(setsockopt_arg._.enable_close_by_reset > 0){
+				linger lin;
+				lin.l_onoff = 1;
+				uint8_t flag = setsockopt_arg._.enable_close_by_reset;
+				lin.l_linger = (flag == 1? 0:flag);
+				setsockopt(accept_fd, SOL_SOCKET, SO_LINGER,(&lin), sizeof(lin));  
+			}			
+			ctrler_creator(accept_fd, servaddr.sin_addr.s_addr, servaddr.sin_port, 0, (setsockopt_arg._.enable_accept_after_recv ? EPOLLIN : 0)); //Yes you can read now!
 			goto start_accept;
 		}
 		#else
 		accept_fd = accept4(listen_fd, (struct sockaddr*)&servaddr, &addrlen, SOCK_NONBLOCK);
 		if(accept_fd > 0){
-			ctrler_creator(accept_fd, servaddr.sin_addr.s_addr, servaddr.sin_port, 0);
+			if(setsockopt_arg._.enable_no_delay > 0){
+				int flag = 1;
+				setsockopt(accept_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
+			}
+			if(setsockopt_arg._.enable_close_by_reset > 0){
+				linger lin;
+				lin.l_onoff = 1;
+				uint8_t flag = setsockopt_arg._.enable_close_by_reset;
+				lin.l_linger = (flag == 1? 0:flag);
+				setsockopt(accept_fd, SOL_SOCKET, SO_LINGER,(&lin), sizeof(lin));  
+			}
+			ctrler_creator(accept_fd, servaddr.sin_addr.s_addr, servaddr.sin_port, 0, (setsockopt_arg._.enable_accept_after_recv ? EPOLLIN : 0)); //Yes you can read now!
 			goto start_accept;
 		}
 		#endif
@@ -145,7 +171,7 @@ cort_proto* cort_tcp_listener::on_accept_error(){
 			return 0;
 		}
 		pause_accept();
-		CO_SLEEP(1000);
+		CO_SLEEP(500);
 		resume_accept();
 		start(); 
 		CO_SWITCH;	//We never finish until we face real error, but we switch the control back to start.
@@ -161,7 +187,7 @@ static void remove_keep_alive(cort_tcp_server_waiter* tcp_cort){
 	else{
 		tcp_cort->clear();	
 		tcp_cort->remove_ref();
-		tcp_cort->ctrler_creator(tcp_cort->get_cort_fd(), tcp_cort->ip_v4, tcp_cort->port_v4, tcp_cort);
+		tcp_cort->ctrler_creator(tcp_cort->get_cort_fd(), tcp_cort->ip_v4, tcp_cort->port_v4, tcp_cort, EPOLLIN);
 	}
 }
 

@@ -44,7 +44,7 @@ namespace cort_socket_error_codes{
 	//2: socket connect error
 	CO_DECL_CODES(SOCKET_CONNECT_ERROR, 2);
 
-	//3: socket connect timeout or stopped
+	//3: socket operation timeout or stopped
 	CO_DECL_CODES(SOCKET_OPERATION_TIMEOUT, 3);
 	
 	//4: socket connect rejected
@@ -52,7 +52,7 @@ namespace cort_socket_error_codes{
 	
 	//5: remote cancled the operation, including:
 	//remote close or reset the connection;
-	//remote send data before your data sending finished.
+	//remote send data when you do not want to receive.
 	CO_DECL_CODES(SOCKET_REMOTE_CANCELED, 5);
 	
 	//6: send data failed. Maybe some system error. 
@@ -200,7 +200,7 @@ struct recv_buffer_ctrl{
 	//return positive number x: x bytes data to be received in total. If recv_buffer is no enough, we will realloc_recv_buffer(x)
 	//return recv_buffer_size: receive data finished. More data received will lead connection close!
 	//return 1<<31: check failed. Unexpected data received, or you just want to stop further receiving.
-	//return negative number y: probably, -y bytes data to be received in total.
+	//return negative number y: probably, -y bytes data to be received in total(unlike to positive number x, y is just a hint for buffer allocation).
 	//You can call realloc_recv_buffer manually in this function.
 	//Using function pointer instead of virtual function enable us reuse the struct for the same ip:port.
 	//You can subclass the recv_buffer_ctrl to add members if recv_check has to update the state of arg.
@@ -224,7 +224,6 @@ struct recv_buffer_ctrl{
 			data0._.is_weak_reference = 0;	
 		}else if((new_buffer_size > recv_buffer_size) || (data0._.recv_finished_shrink_needed == 1)){
 			recv_buffer = (char*)realloc(recv_buffer, new_buffer_size);
-			data0._.is_weak_reference = 0;	
 		}
 		recv_buffer_size = new_buffer_size; 
 		return recv_buffer;
@@ -315,7 +314,6 @@ public:
 	cort_tcp_ctrler();
 private:
 	typedef cort_proto parent_type;
-	cort_tcp_connect_send_recv_data *that; //When we need binary compatibility, using that to add members.
 
 public:	
 //Common API
@@ -418,10 +416,7 @@ public:
 	cort_tcp_connection_waiter* lock_waiter();
 	
 	struct cort_tcp_connection_waiter_for_connect : public cort_tcp_connection_waiter{
-		CO_DECL(cort_tcp_connection_waiter_for_connect)
-		cort_proto* start(){
-			return this->try_connect();
-		}
+		CO_DECL(cort_tcp_connection_waiter_for_connect, try_connect)
 	};
 	
 	//This is not const. Use it only you want to await the waiter!
@@ -430,7 +425,7 @@ public:
 	}
 	
 	struct cort_tcp_connection_waiter_for_send : public cort_tcp_connection_waiter{
-		CO_DECL(cort_tcp_connection_waiter_for_send)
+		CO_DECL(cort_tcp_connection_waiter_for_send, try_send)
 		cort_proto* start(){
 			return this->try_send();
 		}
@@ -442,10 +437,7 @@ public:
 	}
 	
 	struct cort_tcp_connection_waiter_for_recv : public cort_tcp_connection_waiter{
-		CO_DECL(cort_tcp_connection_waiter_for_recv)
-		cort_proto* start(){
-			return this->try_recv();
-		}
+		CO_DECL(cort_tcp_connection_waiter_for_recv, try_recv)
 	};
 	
 	//This is not const. Use it only you want to await the waiter!
@@ -473,13 +465,26 @@ public:
 		struct{
 			uint8_t disable_no_delay:1;
 			uint8_t enable_close_by_reset:1;
+			uint8_t enable_reuse_address:1;
 		}_;
 		uint8_t data;
 	}setsockopt_arg;
 	
 //Connection option.	
 public:	
-	void set_connection_option(int disable_no_delay, int enable_close_by_reset, int enable_accept_until_data);
+	void set_disable_no_delay(uint8_t value = 1){
+		setsockopt_arg._.disable_no_delay = value;
+	}
+	
+	void set_enable_close_by_reset(uint8_t value = 1){
+		setsockopt_arg._.enable_close_by_reset = value;
+	}
+	
+	void set_enable_reuse_address(uint8_t value = 1){
+		setsockopt_arg._.enable_reuse_address = value;
+	}
+	
+	void refresh_socket_option();
 	
 //Time
 public:

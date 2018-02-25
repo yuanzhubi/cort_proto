@@ -37,7 +37,6 @@ cort_tcp_ctrler::cort_tcp_ctrler(){
 }
 
 cort_tcp_ctrler::~cort_tcp_ctrler(){
-
 }
 
 void cort_tcp_ctrler::clear(){
@@ -58,27 +57,30 @@ void cort_tcp_ctrler::set_dest_addr(const char* ip, uint16_t port){
 	set_dest_addr(ip_int, htons(port));
 }
 
-void cort_tcp_ctrler::set_connection_option(int disable_no_delay, int enable_close_by_reset, int enable_accept_until_data){
+void cort_tcp_ctrler::refresh_socket_option(){
 	cort_tcp_connection_waiter* result = this->connection_waiter.get_ptr();
 	if(result != 0){
 		int fd = result->get_cort_fd();
 		if(fd > 0){
-			if(disable_no_delay > 0){
+			if(setsockopt_arg._.disable_no_delay == 0){
 				int flag = 1;
 				setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
 			}
-			if(enable_close_by_reset > 0){
+			if(setsockopt_arg._.enable_close_by_reset > 0){
 				linger lin;
 				lin.l_onoff = 1;
-				lin.l_linger = (enable_close_by_reset == 1) ? 0:enable_close_by_reset;
+				uint8_t flag = setsockopt_arg._.enable_close_by_reset;
+				lin.l_linger = (flag == 1? 0:flag);
 				setsockopt(fd, SOL_SOCKET, SO_LINGER,(&lin), sizeof(lin));  
 			}
-			if(enable_accept_until_data > 0){
-				setsockopt(fd, IPPROTO_TCP, TCP_DEFER_ACCEPT, &enable_accept_until_data, sizeof(enable_accept_until_data));
+			if(setsockopt_arg._.enable_reuse_address != 0){
+				int cort_yes = 1;
+				setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &cort_yes, sizeof(cort_yes));
 			}
 		}	
 	}
 }
+
 struct ip_v4_key{
 	union{
 		struct{
@@ -89,7 +91,7 @@ struct ip_v4_key{
 		uint64_t i_data;
 	}data;
 };
-int counter = 0;
+
 //Here cort_tcp_connection_waiter_client* element in the vector should be its only strong reference!
 static __thread std::map<uint64_t, std::vector<cort_tcp_connection_waiter_client* > >* connection_tcp_pool = 0;
 static void remove_keep_alive(cort_tcp_connection_waiter_client* tcp_cort){
@@ -151,7 +153,6 @@ void cort_tcp_connection_waiter::on_finish(){
 			set_poll_request((~EPOLLOUT) & poll_req);
 		}
 	}
-	
 }
 
 void cort_tcp_connection_waiter_client::keep_alive(uint32_t keep_alive_ms, uint32_t ip_v4, uint16_t port_v4, uint16_t type_key){
@@ -262,7 +263,9 @@ cort_proto* cort_tcp_connection_waiter::try_connect(){
 					goto connect_again;
 				}
 				else if(thread_errno == EADDRNOTAVAIL){
-					cort_tcp_connection_waiter_client::clear_keep_alive_connection(cort_socket_config::SOCKET_KEEPALIVE_AUTO_RELEASE_COUNT);
+					cort_tcp_connection_waiter_client::clear_keep_alive_connection(cort_socket_config::SOCKET_KEEPALIVE_AUTO_RELEASE_COUNT, 
+						parent_waiter->ip_v4, parent_waiter->port_v4, parent_waiter->type_key
+					);
 				}
 				close(sockfd);
 				set_errno(cort_socket_error_codes::SOCKET_CONNECT_ERROR);
@@ -271,6 +274,7 @@ cort_proto* cort_tcp_connection_waiter::try_connect(){
 		}
 		else{
 			set_cort_fd(sockfd);
+			parent_waiter->refresh_socket_option();
 			CO_RETURN;
 		}
 		set_cort_fd(sockfd);
@@ -289,6 +293,7 @@ cort_proto* cort_tcp_connection_waiter::try_connect(){
 			close_connection(cort_socket_error_codes::SOCKET_CONNECT_ERROR);
 			CO_RETURN;
 		}
+		((cort_tcp_ctrler*)get_parent())->refresh_socket_option();
 	CO_END
 }
 
@@ -317,12 +322,6 @@ cort_proto* cort_tcp_connection_waiter::try_send(){
 		}
 		
 		cort_tcp_ctrler* parent_waiter = (cort_tcp_ctrler*)get_parent();
-
-		//We should send until 
-		//else{
-		//	set_poll_request(send_poll_request);
-		//	CO_AGAIN;
-		//}
 		
 		if(parent_waiter->timeout != 0){
 			this->set_timeout(parent_waiter->timeout);
@@ -400,7 +399,7 @@ cort_proto* cort_tcp_connection_waiter::try_recv(){
 			CO_RETURN;	
 		}
 		uint32_t poll_event = get_poll_result();
-		if( ((EPOLLHUP|EPOLLRDHUP|EPOLLERR) & poll_event) != 0){
+		if( ((EPOLLHUP|EPOLLERR) & poll_event) != 0){
 			close_connection(cort_socket_error_codes::SOCKET_REMOTE_CANCELED);
 			CO_RETURN;	
 		}
@@ -432,7 +431,14 @@ cort_proto* cort_tcp_connection_waiter::try_recv(){
 			rcv_buf->recved_size += recved_size;
 			if(rcv_buf->data0._.recv_check_further_needed != 0){ //You have to recv recv_buffer_size in total
 				if(rcv_buf->recved_size == rcv_buf->recv_buffer_size) {
+					if(EPOLLRDHUP & poll_event){
+						close_connection(0);
+					}
 					CO_RETURN; //recv_finished!
+				}
+				if(EPOLLRDHUP & poll_event){
+					close_connection(cort_socket_error_codes::SOCKET_REMOTE_CANCELED);
+					CO_RETURN;	
 				}
 				set_poll_request(recv_poll_request);
 				CO_AGAIN;
@@ -448,7 +454,7 @@ cort_proto* cort_tcp_connection_waiter::try_recv(){
 				set_poll_request(recv_poll_request);
 				CO_AGAIN;
 			}
-			close_connection(cort_socket_error_codes::SOCKET_SEND_ERROR);
+			close_connection(cort_socket_error_codes::SOCKET_RECEIVE_ERROR);
 			CO_RETURN;
 		}
 		else if(recved_size == 0){
@@ -461,9 +467,12 @@ cort_proto* cort_tcp_connection_waiter::try_recv(){
 			if(rcv_buf->data0._.recv_finished_shrink_needed != 0){
 				rcv_buf->shrink_to_fit();
 			}
+			if(EPOLLRDHUP & poll_event){
+				close_connection(0);
+			}
 			CO_RETURN; //recv finished
 		}
-		else if(to_recved_size == recv_buffer_ctrl::unexpected_data_received){
+		if(to_recved_size == recv_buffer_ctrl::unexpected_data_received){
 			close_connection(cort_socket_error_codes::SOCKET_RECEIVED_CHECK_ERROR);
 			CO_RETURN; //recv bad data
 		}
@@ -479,6 +488,9 @@ cort_proto* cort_tcp_connection_waiter::try_recv(){
 		else{		
 			if(to_recved_size > 0){
 				if(to_recved_size <= rcv_buf->recved_size){
+					if(EPOLLRDHUP & poll_event){
+						close_connection(0);
+					}
 					CO_RETURN; //Even recv more than expected, we think it is ok
 				}
 				rcv_buf->data0._.recv_check_further_needed = 1;
@@ -495,6 +507,10 @@ cort_proto* cort_tcp_connection_waiter::try_recv(){
 		if(rcv_buf->recv_buffer == 0){ //realloc error.
 			close_connection(cort_socket_error_codes::SOCKET_ALLOC_MEMORY_ERROR);
 			CO_RETURN;
+		}
+		if(EPOLLRDHUP & poll_event){
+			close_connection(cort_socket_error_codes::SOCKET_REMOTE_CANCELED);
+			CO_RETURN;	
 		}
 		set_poll_request(recv_poll_request);
 		CO_AGAIN;
@@ -543,10 +559,12 @@ cort_proto* cort_tcp_ctrler::try_recv(){
 }
 
 void cort_tcp_ctrler::on_connection_inactive(){
-	if(keep_alive_ms > 0 && connection_waiter && get_errno() == 0 && connection_waiter->is_connected()){
-		connection_waiter->keep_alive(keep_alive_ms, ip_v4, port_v4, type_key);
+	if(connection_waiter){
+		if(keep_alive_ms > 0 && get_errno() == 0 && connection_waiter->is_connected()){
+			connection_waiter->keep_alive(keep_alive_ms, ip_v4, port_v4, type_key);
+		}
+		connection_waiter.clear();
 	}
-	connection_waiter.clear();
 }
 
 void cort_tcp_ctrler::on_finish(){
@@ -560,8 +578,6 @@ void cort_tcp_ctrler::on_finish(){
 
 static cort_proto* release_when_notification(cort_proto* arg){
 	cort_tcp_connection_waiter_client* tcp_cort = (cort_tcp_connection_waiter_client*)arg;
-	tcp_cort->clear();
-	tcp_cort->close_cort_fd();
 	tcp_cort->release();
 	return 0;
 }
@@ -595,16 +611,11 @@ size_t cort_tcp_connection_waiter_client::clear_keep_alive_connection(size_t cou
 	}
 	if(it != connection_tcp_pool->end()){
 		std::vector<cort_tcp_connection_waiter_client* >& dq = it->second;
-		time_ms_t now_time = cort_timer_now_ms();
 		while(!dq.empty() && count-- != 0){
 			cort_tcp_connection_waiter_client* last = dq.back();				
 			dq.pop_back();
-			if(now_time < last->get_timeout_time()){
-				release_when_notification(last);
-			}else{
-				last->close_cort_fd();
-				last->set_run_function(release_when_notification);
-			}
+			last->close_cort_fd();
+			last->set_run_function(release_when_notification);
 			++result;
 		}
 		if(dq.empty()){

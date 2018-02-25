@@ -43,7 +43,6 @@ int main(void)
             }
 			if(result == 0){//using ctrl+d in *nix
 				remove_poll_request();
-                puts("read end");
 				CO_RETURN;
 			}
 			write(1,buf,result);
@@ -53,6 +52,7 @@ int main(void)
         CO_END
         }
     }test_cort0, test_cort1;
+	printf("This will start an stdio echo test for the cort_time_waiter and cort_fd_waiter. \n");
     cort_timer_init();
     test_cort0.start();
     cort_timer_loop();

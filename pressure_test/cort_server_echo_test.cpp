@@ -1,7 +1,7 @@
 #ifdef CORT_SERVER_ECHO_TEST
 #include <unistd.h>
 #include <stdio.h>
-#include "../network/cort_tcp_listener.h"
+#include "../net/cort_tcp_listener.h"
 int sleep_ms_count = 0;
 unsigned int error_count_total;
 unsigned int success_count_total;
@@ -45,6 +45,7 @@ struct cort_tcp_echo_server : cort_tcp_ctrler{
 		else{
 			++success_count_total;
 		}
+		on_connection_inactive();
 		delete this;
 	}
 	cort_proto* start(){
@@ -58,7 +59,7 @@ struct cort_tcp_echo_server : cort_tcp_ctrler{
 			if(get_errno() != 0){
 				CO_RETURN;	
 			}
-			CO_SLEEP_IF(sleep_ms_count != 0, sleep_ms_count); //We simulate the real payload cost.
+			CO_SLEEP_IF(sleep_ms_count != 0, sleep_ms_count); //We simulate the real payload time cost.
 			if(get_errno() != 0){ //Remote closes the connection? Or remote sends data that break the "ping-pong" rule? Or timeout.
 				CO_RETURN;	
 			}
@@ -66,16 +67,21 @@ struct cort_tcp_echo_server : cort_tcp_ctrler{
 			CO_AWAIT(lock_send());
 			if(get_errno() != 0){
 				CO_RETURN;	
-			}		
-			on_connection_inactive(); //keep-alive
+			}
 		CO_END
 	}
 };
+
+cort_tcp_listener listener, listener1, listener2;
 #include <sys/epoll.h>
 struct stdio_switcher : public cort_fd_waiter{
 	CO_DECL(stdio_switcher)
 	void on_finish(){
-		cort_timer_destroy();	//this will stop the timer loop;
+		remove_poll_request();
+		listener.stop_listen();
+		listener1.stop_listen();
+		listener2.stop_listen();
+		cort_timer_destroy();	
 	}
 	cort_proto* start(){
 	CO_BEGIN
@@ -89,7 +95,7 @@ struct stdio_switcher : public cort_fd_waiter{
 		char buf[1024] ;
 		int result = read(0, buf, 1023);
 		if(result == 0){ 	//using ctrl+d in *nix
-			puts("read end");
+
 			CO_RETURN;
 		}
 		CO_AGAIN;
@@ -102,7 +108,9 @@ int main(int argc, char* argv[]){
 		sleep_ms_count = atoi(argv[1]);
 	}
 	cort_timer_init();	
-	cort_tcp_listener listener, listener1, listener2;
+	printf( "This will start an echo server. Press ctrl+d to stop. \n"
+			"arg1: sleep microseconds before response, default: 0. \n"
+	);
 	listener.set_listen_port(8888);
 	listener1.set_listen_port(8889);
 	listener2.set_listen_port(8890);

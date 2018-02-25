@@ -2,19 +2,14 @@
 # 此 .gitignore 文件已由 Microsoft(R) Visual Studio 自动创建。
 ################################################################################
 
-/unit_test/cort_timeout_waiter_test
-/unit_test/cort_tcp_ctrler_test
-/pressure_test/cort_server_echo_test
-/pressure_test/cort_proto_test
-/pressure_test/cort_client_echo_test
 /.vs/VSWorkspaceState.json
 /.vs/slnx.sqlite
 /.vs/ProjectSettings.json
 /.vs/cort_proto/v15/Browse.VC.opendb
 /.vs/cort_proto/v15/Browse.VC.db
 /.vs/cort_proto/v15/.suo
-/libcort_proto.a
-/cort_timeout_waiter.o
-/cort_tcp_listener.o
-/cort_tcp_ctrler.o
-/a.out
+*.out
+*.o
+*.so
+*.a
+*.zip

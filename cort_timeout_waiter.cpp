@@ -15,6 +15,7 @@ struct cort_timer;
 
 typedef cort_timeout_waiter::time_ms_t time_ms_t;
 static __thread int epfd = 0;
+static __thread bool eptimer_is_to_stop = false;
 static __thread cort_timer* eptimer = 0;
 
 static __thread uint32_t epollfd_total_count = 0;
@@ -204,7 +205,7 @@ struct cort_timer{
         return false;
     }
     
-    void insert_time_out(timeout_list* pos_data, time_ms_t time_out){
+    void add_time_out(timeout_list* pos_data, time_ms_t time_out){
         if(timer_size == timer_capacity){
             timer_capacity += heap_size_delta;
             timer_heap = (timeout_list**)realloc(timer_heap, timer_capacity*sizeof(*timer_heap));
@@ -214,7 +215,7 @@ struct cort_timer{
         up_update_heap(timer_size++, time_out);
     }
     
-    void update_time_out(size_t pos){
+    void remove_time_out(size_t pos){
         timeout_list* pos_data = timer_heap[pos];
         co_unlikely_if(pos_data->data->empty()){
             --timer_size;
@@ -234,7 +235,7 @@ struct cort_timer{
             return;
         }
         time_ms_t my_time = pos_data->data->back().end_time;
-        up_update_heap(pos, my_time) || down_update_heap(pos, my_time);
+        down_update_heap(pos, my_time);
     }
     
     cort_timeout_waiter_data* add_timer(cort_timeout_waiter* timer, time_ms_t timeout){
@@ -249,31 +250,32 @@ struct cort_timer{
         cort_timeout_waiter_data& real_result = *it_result;
         real_result.pos = it_result;
         if(data->heap_pos == heap_npos){
-            insert_time_out(data, data_endtime);
+            add_time_out(data, data_endtime);
         }
         return &real_result;
     }
     
     void remove_timer(cort_timeout_waiter_data* end_time_result){
-        cort_timeout_waiter_data* addr = &(end_time_result->host_list->data->back());
         size_t old_pos = end_time_result->host_list->heap_pos;
+		cort_timeout_waiter_data* addr = &(end_time_result->host_list->data->back());
         end_time_result->host_list->data->erase(end_time_result->pos);
         if(addr == end_time_result){
-            update_time_out(old_pos);
+            remove_time_out(old_pos);
         }
     }
 };
 
 int cort_timer_init(){
-	if(eptimer != 0){
-		return -1;
+	if(eptimer == 0){
+		eptimer = new cort_timer();
 	}
-	epollfd_total_count = 0;
-	eptimer = new cort_timer();
-    epfd = epoll_create(1);
-    if(epfd <= 0){
-        return -1;
-    }
+	
+	if(epfd <= 0){
+		epfd = epoll_create(10);
+		if(epfd <= 0){
+			return -1;
+		}
+	}    
 	cort_timer_refresh_clock();
     signal(SIGHUP,  SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
@@ -286,7 +288,7 @@ int cort_timer_init(){
     //daemon(1, 1);
 }
 void cort_timer_destroy(){
-    if(epfd > 0){
+    if(epfd > 0 && epollfd_total_count == 0){
         close(epfd);
 		epfd = 0;
     }
@@ -294,14 +296,29 @@ void cort_timer_destroy(){
 	eptimer = 0;
 }
 
-#if defined( __USE_RDTSCP__) 
+void cort_timer_destroy_later(){
+    if(epfd > 0 && epollfd_total_count == 0){
+        close(epfd);
+		epfd = 0;
+    }
+	eptimer_is_to_stop = true;
+}
+
+#if defined(CO_USE_RDTSC) 
 static inline unsigned long long counter(void)
 {
     register uint32_t lo, hi;
     register unsigned long long o;
+#if !defined(CO_USE_RDTSCP)
+	__asm__ __volatile__ (
+			//"mfence;"  we do not need very accurate so we do not be afraid of instruction reorder.
+			"rdtsc" : "=a"(lo), "=d"(hi)
+            );
+#else
     __asm__ __volatile__ (
             "rdtscp" : "=a"(lo), "=d"(hi)
             );
+#endif
     o = hi;
     o <<= 32;
     return (o | lo);
@@ -312,8 +329,9 @@ static inline time_ms_t getCpuKhz()
     FILE *fp = fopen("/proc/cpuinfo","r");
     if(!fp) return 1;
     static char buf[4096] = {0};
-    fread(buf,1,sizeof(buf),fp);
+    size_t read_count = fread(buf,1,sizeof(buf),fp);
     fclose(fp);
+	if(read_count < 1) return 1;
     char *lp = strstr(buf,"cpu MHz");
     if(!lp) return 1;
     lp += sizeof("cpu MHz") - 1;
@@ -321,19 +339,19 @@ static inline time_ms_t getCpuKhz()
         ++lp;
     }
     double mhz = atof(lp);
-    time_ms_t u = ((time_ms_t)mhz * 1000ull);
+    time_ms_t u = ((time_ms_t)(mhz * 1000ull));
     return u;
 }
 #endif
 
 static inline time_ms_t now_ms()
 {
-#if defined( __USE_RDTSCP__) 
+#if defined(CO_USE_RDTSC) 
     static uint32_t khz = getCpuKhz();
     return counter() / khz;
 #else
     struct timeval now;gettimeofday( &now,NULL );
-    time_ms_t u = now.tv_sec * 1000ull + (now.tv_usec / 1000); //almost now.tv_usec / 1000
+    time_ms_t u = now.tv_sec * 1000ull + (now.tv_usec / 1000); 
     return u;
 #endif
 }
@@ -358,18 +376,19 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
     struct epoll_event events[max_wait_count];                   
     do{
 		int wait_time;
-        if(until_ms <= cort_timer_refresh_clock()){
-			if(until_ms == 0){
-				wait_time = 1*1000;
-			}
-			else{
-				return -1;
-			}
+		if(until_ms == 0){
+			wait_time = 1*1000;
+		}else if(until_ms <= cort_timer_refresh_clock()){
+			return -1;
         }else{
 			wait_time = int(until_ms - current_ms);
 		}
-		if(epfd == 0){
-			return 0;
+		bool is_eptimer_empty = false;
+		if(eptimer == 0){
+			if(until_ms != 0){
+				return 0;
+			}
+			is_eptimer_empty = true;
 		}
         int nfds = epoll_wait(epfd, events, max_wait_count, wait_time);
         cort_timer_refresh_clock();
@@ -381,7 +400,7 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
         }
         for(int i = 0; i < nfds; i++){
             ((cort_fd_waiter*)events[i].data.ptr)->resume_on_poll(events[i].events);
-			if(epfd == 0){
+			if((!is_eptimer_empty) && (eptimer == 0)){ //The cort may resume_on_stop, or even delete themselves!!
 				return 0;
 			}
         }
@@ -393,26 +412,37 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
 }
 
 void cort_timer_loop(){
-	while(true){
-		if(eptimer == 0){
+	do{
+		start_loop:
+		while(true){
+			if(eptimer == 0){
+				break;
+			}	
+			
+			for(cort_timeout_waiter_data* ptimer = eptimer->get_next_timer(); ptimer != 0; ptimer = eptimer->get_next_timer()){
+				int result = cort_timer_poll(ptimer->end_time);
+				if(eptimer == 0){	//All the timer should stop work.
+					break;
+				}
+				
+				if(result < 0 && ptimer == eptimer->get_next_timer()){ //Maybe the timeout is reseted during cort_timer_poll.
+					ptimer->data->resume_on_timeout();
+				}
+				if(eptimer == 0){	//All the timer should stop work.
+					break;
+				}
+			}	
 			break;
 		}
 		
-		for(cort_timeout_waiter_data* ptimer =  eptimer->get_next_timer();ptimer != 0;ptimer =  eptimer->get_next_timer()){
-			int result = cort_timer_poll(ptimer->end_time);
-			if(result < 0){
-				ptimer->data->resume_on_timeout();
-			}
-			if(eptimer == 0){
-				break;
-			}
-		}
-		if(epollfd_total_count != 0){
+		//Waiting for the waited fd. Now we do not have the concept of timeout.
+		while(epollfd_total_count != 0){
 			cort_timer_poll(0);
-			continue;
+			if(eptimer != 0){
+				goto start_loop;
+			}
 		}
-		break;
-	}
+	}while(false);
 }
 
 uint32_t cort_timeout_waiter::get_time_past() const{
@@ -451,7 +481,9 @@ void cort_timeout_waiter::set_timeout(time_ms_t timeout_ms){
     clear_timeout();
 	time_cost_ms = 0;
 	start_time_ms = cort_timer_now_ms();
-	that = eptimer->add_timer(this, timeout_ms);
+	if(eptimer != 0){
+		that = eptimer->add_timer(this, timeout_ms);
+	}
 }
 
 void cort_timeout_waiter::clear(){
@@ -483,7 +515,7 @@ void cort_fd_waiter::resume_on_poll(uint32_t poll_event){
 
 int cort_fd_waiter::set_poll_request(uint32_t arg_poll_request){
 	clear_poll_result();
-	if(poll_request == arg_poll_request){
+	if(poll_request == arg_poll_request || cort_fd < 0){
 		return 0;
 	}
     struct epoll_event event;
@@ -494,6 +526,7 @@ int cort_fd_waiter::set_poll_request(uint32_t arg_poll_request){
 		result = epoll_ctl(epfd, EPOLL_CTL_ADD, cort_fd, &event);
 		if(result == 0){
 			++epollfd_total_count;
+			//fd_trace_set.insert(cort_fd);
 		}
 	}
 	else{
@@ -504,10 +537,14 @@ int cort_fd_waiter::set_poll_request(uint32_t arg_poll_request){
 }
 
 int cort_fd_waiter::remove_poll_request(){
+	if(cort_fd < 0){
+		return 0;
+	}
 	struct epoll_event event;
     int result = epoll_ctl(epfd, EPOLL_CTL_DEL, cort_fd, &event);
 	if(result == 0 && poll_request != 0){
 		--epollfd_total_count;
+		//fd_trace_set.erase(cort_fd);
 		poll_request = 0;
 	}
 	return result;
@@ -517,6 +554,7 @@ void cort_fd_waiter::close_cort_fd(){
 	if(cort_fd > -1){
 		if(poll_request != 0){
 			--epollfd_total_count;
+			//fd_trace_set.erase(cort_fd);
 		}
 		close(cort_fd);
 	}
@@ -524,4 +562,11 @@ void cort_fd_waiter::close_cort_fd(){
 	poll_request = 0;
 	poll_result = 0;
 }
+void cort_fd_waiter::remove_cort_fd(){
+	remove_poll_request();
+	set_cort_fd(-1);
+}
 
+uint32_t cort_fd_waiter::cort_waited_fd_count_thread(){
+	return epollfd_total_count;
+}
