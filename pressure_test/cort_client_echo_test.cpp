@@ -19,151 +19,151 @@ unsigned int success_count_total;
 unsigned int total_time_cost;
 
 struct errnum_counter{
-	struct err_info{
-		unsigned int err_cost;
-		unsigned int err_times;
-	};
-	err_info counter[256];
-	void init(){
-		memset(counter, 0, sizeof(counter));
-	}
-	void add_error(uint8_t err, unsigned int time_cost){
-		++counter[err].err_times;
-		counter[err].err_cost += time_cost;
-	}
-	void output(){
-		for(int i = 1; i<256; ++i){
-			if(counter[i].err_times != 0){
-				printf("error %s: %u times, %fms averaget_time_cost!\n", 
-					cort_socket_error_codes::error_info(i), counter[i].err_times, ((double)counter[i].err_cost)/counter[i].err_times);
-				counter[i].err_cost = 0;
-				counter[i].err_times = 0;
-			}
-		}
-	}
-	~errnum_counter(){
-		output();
-	}
-	
+    struct err_info{
+        unsigned int err_cost;
+        unsigned int err_times;
+    };
+    err_info counter[256];
+    void init(){
+        memset(counter, 0, sizeof(counter));
+    }
+    void add_error(uint8_t err, unsigned int time_cost){
+        ++counter[err].err_times;
+        counter[err].err_cost += time_cost;
+    }
+    void output(){
+        for(int i = 1; i<256; ++i){
+            if(counter[i].err_times != 0){
+                printf("error %s: %u times, %fms averaget_time_cost!\n", 
+                    cort_socket_error_codes::error_info(i), counter[i].err_times, ((double)counter[i].err_cost)/counter[i].err_times);
+                counter[i].err_cost = 0;
+                counter[i].err_times = 0;
+            }
+        }
+    }
+    ~errnum_counter(){
+        output();
+    }
+    
 }error_counter;
 
 struct print_result_cort: public cort_auto_delete{
-	CO_DECL(print_result_cort)
-	cort_proto* start(){
-		CO_BEGIN
-			unsigned int total = error_count_total + success_count_total;
-			if(total == 0){
-				total = 1;
-			}
-			printf("succeed: %u, error: %u, averaget_time_cost: %fms \n", success_count_total, error_count_total, ((double)(total_time_cost))/total);
-			success_count_total = 0, error_count_total = 0, total_time_cost = 0;
-			error_counter.output();
-		CO_END
-	}
+    CO_DECL(print_result_cort)
+    cort_proto* start(){
+        CO_BEGIN
+            unsigned int total = error_count_total + success_count_total;
+            if(total == 0){
+                total = 1;
+            }
+            printf("succeed: %u, error: %u, averaget_time_cost: %fms \n", success_count_total, error_count_total, ((double)(total_time_cost))/total);
+            success_count_total = 0, error_count_total = 0, total_time_cost = 0;
+            error_counter.output();
+        CO_END
+    }
 };
 
 struct send_cort : public cort_auto_delete{
-	CO_DECL(send_cort)
-	cort_tcp_request_response cort_test0;
-	
-	static recv_buffer_ctrl::recv_buffer_size_t recv_check_function(recv_buffer_ctrl* arg, cort_tcp_ctrler* p){
-		int32_t size = p->get_recv_buffer_size();
-		char* buf = p->get_recv_buffer();
-		if(size == 0){
-			return 0;
-		}
-		if(buf[size-1] == '\0'){
-			return size;
-		}
-		return 0;
-	}
-	cort_proto* start(){
-		CO_BEGIN
-			cort_test0.set_dest_addr(ip, port); 			
-			cort_test0.set_timeout(timeout);
-			cort_test0.set_keep_alive(keepalive_timeout);
-			send_content[send_size-1] = '\0';
-			cort_test0.set_send_buffer(send_content, send_size);
-			cort_test0.set_recv_check_function(&send_cort::recv_check_function);
-			cort_test0.alloc_recv_buffer();
-			CO_AWAIT(&cort_test0);
-			if(cort_test0.get_errno() != 0){
-				error_counter.add_error(cort_test0.get_errno(), cort_test0.get_time_cost());
-				++error_count_total;
-			}
-			else{
-				++success_count_total;
-			}
-			total_time_cost += cort_test0.get_time_cost();
-		CO_END
-	}
+    CO_DECL(send_cort)
+    cort_tcp_request_response cort_test0;
+    
+    static recv_buffer_ctrl::recv_buffer_size_t recv_check_function(recv_buffer_ctrl* arg, cort_tcp_ctrler* p){
+        int32_t size = p->get_recv_buffer_size();
+        char* buf = p->get_recv_buffer();
+        if(size == 0){
+            return 0;
+        }
+        if(buf[size-1] == '\0'){
+            return size;
+        }
+        return 0;
+    }
+    cort_proto* start(){
+        CO_BEGIN
+            cort_test0.set_dest_addr(ip, port);             
+            cort_test0.set_timeout(timeout);
+            cort_test0.set_keep_alive(keepalive_timeout);
+            send_content[send_size-1] = '\0';
+            cort_test0.set_send_buffer(send_content, send_size);
+            cort_test0.set_recv_check_function(&send_cort::recv_check_function);
+            cort_test0.alloc_recv_buffer();
+            CO_AWAIT(&cort_test0);
+            if(cort_test0.get_errno() != 0){
+                error_counter.add_error(cort_test0.get_errno(), cort_test0.get_time_cost());
+                ++error_count_total;
+            }
+            else{
+                ++success_count_total;
+            }
+            total_time_cost += cort_test0.get_time_cost();
+        CO_END
+    }
 };
 
 #include <sys/epoll.h>
 struct stdio_switcher : public cort_fd_waiter{
-	CO_DECL(stdio_switcher)
-	void on_finish(){
-		remove_poll_request();
-		cort_timer_destroy();	//this will stop the timer loop;
-	}
-	cort_proto* start(){
-	CO_BEGIN
-		set_cort_fd(0);
-		set_poll_request(EPOLLIN|EPOLLHUP);
-		CO_YIELD();
-		if(get_poll_result() != EPOLLIN){
-			puts("exception happened?");
-			CO_RETURN;
-		}
-		char buf[1024] ;
-		int result = read(0, buf, 1023);
-		if(result == 0){ 	//using ctrl+d in *nix
+    CO_DECL(stdio_switcher)
+    void on_finish(){
+        remove_poll_request();
+        cort_timer_destroy();   //this will stop the timer loop;
+    }
+    cort_proto* start(){
+    CO_BEGIN
+        set_cort_fd(0);
+        set_poll_request(EPOLLIN|EPOLLHUP);
+        CO_YIELD();
+        if(get_poll_result() != EPOLLIN){
+            puts("exception happened?");
+            CO_RETURN;
+        }
+        char buf[1024] ;
+        int result = read(0, buf, 1023);
+        if(result == 0){    //using ctrl+d in *nix
 
-			CO_RETURN;
-		}
-		CO_AGAIN;
-	CO_END
-	}
+            CO_RETURN;
+        }
+        CO_AGAIN;
+    CO_END
+    }
 }switcher;
 
 int main(int argc, char* argv[]){
-	cort_timer_init();
-	error_counter.init();
-	printf( "This will start a echo client test. Press ctrl+d to stop. \n"
-			"arg1: ip, default: 127.0.0.1 \n"
-		    "arg2: port, default: 8888 \n"
-		    "arg3: send_size, default: 384 \n"
-		    "arg4: query per second, default: 100 \n"
-	);
-	if(argc > 1){
-		ip = argv[1];
-	}
-	if(argc > 2){
-		port = (unsigned short)(atoi(argv[2]));
-	}
-	if(argc > 3){
-		send_size = (unsigned int)(atoi(argv[3]));
-	}
-	if(argc > 4){
-		speed = (unsigned int)(atoi(argv[4]));
-	}
-	
+    cort_timer_init();
+    error_counter.init();
+    printf( "This will start a echo client test. Press ctrl+d to stop. \n"
+            "arg1: ip, default: 127.0.0.1 \n"
+            "arg2: port, default: 8888 \n"
+            "arg3: send_size, default: 384 \n"
+            "arg4: query per second, default: 100 \n"
+    );
+    if(argc > 1){
+        ip = argv[1];
+    }
+    if(argc > 2){
+        port = (unsigned short)(atoi(argv[2]));
+    }
+    if(argc > 3){
+        send_size = (unsigned int)(atoi(argv[3]));
+    }
+    if(argc > 4){
+        speed = (unsigned int)(atoi(argv[4]));
+    }
+    
 #if !defined(UNIT_TEST)
-	cort_repeater<send_cort> tester;
-	tester.set_repeat_per_second(speed);
-	
-	cort_repeater<print_result_cort> logger;
-	logger.set_repeat_per_second(1);
-	logger.start();
+    cort_repeater<send_cort> tester;
+    tester.set_repeat_per_second(speed);
+    
+    cort_repeater<print_result_cort> logger;
+    logger.set_repeat_per_second(1);
+    logger.start();
 #else
-	send_cort tester;
+    send_cort tester;
 #endif
-	
-	tester.start();
-	switcher.start();
-	cort_timer_loop();
-	cort_timer_destroy();
-	return 0;	
+    
+    tester.start();
+    switcher.start();
+    cort_timer_loop();
+    cort_timer_destroy();
+    return 0;   
 }
 
 #endif

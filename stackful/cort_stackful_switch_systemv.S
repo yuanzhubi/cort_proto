@@ -24,7 +24,7 @@ cort_stackful_switch:
     popq  %rbx                                                                                                                   
     popq  %rbp                                                                                                                   
     
-	movq  %rdx, %rax
+    movq  %rdx, %rax
     popq  %rcx
     jmpq  *%rcx                                                                                                                             
                                                                                                                                                                                                                                                        
@@ -45,10 +45,10 @@ cort_stackful_start:
     pushq %r14
     pushq %r15
 
-	movq  %rsp, (%rsi)     /*cort_stackful_switch can use the address to return*/                                                                                                      
-    movq  %rdx, %rsp	   /*%rdx should be 16x+8*/
-	pushq %rsi
-	call  *%rcx                                                                                                                                                                                                                              
+    movq  %rsp, (%rsi)     /*cort_stackful_switch can use the address to return*/                                                                                                      
+    movq  %rdx, %rsp       /*%rdx should be 16x+8*/
+    pushq %rsi
+    call  *%rcx                                                                                                                                                                                                                              
     movq  (%rsp), %rsi     /*We should return as same form of cort_stackful_switch*/                                                                                                                                                                                                                        
     movq  (%rsi), %rsp                                                                                                          
                                                                                                                                  
@@ -59,7 +59,7 @@ cort_stackful_start:
     popq  %rbx                                                                                                                   
     popq  %rbp                                                                                                                   
     
-	xorq  %rax, %rax
+    xorq  %rax, %rax
     popq  %rcx
     jmpq  *%rcx                                                                                                                                           
                                                                                                                             
@@ -67,7 +67,7 @@ cort_stackful_start:
 
 
 
-#elif	defined(__i386__)
+#elif   defined(__i386__)
 
 .text
 .globl cort_stackful_switch
@@ -79,19 +79,19 @@ cort_stackful_switch:
     pushl  %ebp
     pushl  %ebx
     pushl  %edi
-	pushl  %esi
+    pushl  %esi
 
-	movl  0x14(%esp), %eax
-	movl  0x18(%esp), %edx
+    movl  0x14(%esp), %eax
+    movl  0x18(%esp), %edx
     movl  %esp, (%eax)
-	movl  0x1c(%esp), %eax
+    movl  0x1c(%esp), %eax
     movl  (%edx), %esp
                                                                                                                                  
     popl  %esi                                                                                                                   
     popl  %edi                                                                                                               
     popl  %ebx                                                                                                                   
     popl  %ebp 
-	
+    
     popl  %ecx
     jmpl  *%ecx                                                                                                                    
                                                                                                                                  
@@ -107,27 +107,27 @@ cort_stackful_start:
     pushl  %ebp
     pushl  %ebx
     pushl  %edi
-	pushl  %esi
+    pushl  %esi
 
-	movl  0x14(%esp), %ebx			/* now we can use callee saved register free */
-	movl  0x18(%esp), %eax
-	movl  0x1c(%esp), %edx
-	movl  0x20(%esp), %ecx
-	
+    movl  0x14(%esp), %ebx          /* now we can use callee saved register free */
+    movl  0x18(%esp), %eax
+    movl  0x1c(%esp), %edx
+    movl  0x20(%esp), %ecx
+    
     movl  %esp, (%eax)
-    movl  %edx, %esp				 /* %edx should be 16x+2*4 */
-	pushl %eax 
-	pushl %ebx
-	call  *%ecx
-	movl  4(%esp), %edx                                                                                                                                                                                                                           
+    movl  %edx, %esp                 /* %edx should be 16x+2*4 */
+    pushl %eax 
+    pushl %ebx
+    call  *%ecx
+    movl  4(%esp), %edx                                                                                                                                                                                                                           
     movl  (%edx),  %esp        
                                                                                                                                  
     popl  %esi                                                                                                                   
     popl  %edi                                                                                                               
     popl  %ebx                                                                                                                   
     popl  %ebp 
-	
-	xorl  %eax, %eax
+    
+    xorl  %eax, %eax
     popl  %ecx
     jmpl  *%ecx                                                                                                                    
                                                                                                                                  

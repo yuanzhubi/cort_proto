@@ -14,7 +14,7 @@ int main(void)
         CO_DECL(stdio_echo_test)
         cort_proto* start(){
         CO_BEGIN
-			set_cort_fd(0);
+            set_cort_fd(0);
             set_poll_request(EPOLLIN|EPOLLHUP);
             last_time_out = 5000;
             set_timeout(last_time_out);
@@ -39,20 +39,20 @@ int main(void)
             if(result < 0){
                 remove_poll_request();
                 puts("read exception?");
-				CO_RETURN;
+                CO_RETURN;
             }
-			if(result == 0){//using ctrl+d in *nix
-				remove_poll_request();
-				CO_RETURN;
-			}
-			write(1,buf,result);
-			last_time_out = 4095;
-			set_timeout(last_time_out);
-			CO_SLEEP_AGAIN(10);
+            if(result == 0){//using ctrl+d in *nix
+                remove_poll_request();
+                CO_RETURN;
+            }
+            write(1,buf,result);
+            last_time_out = 4095;
+            set_timeout(last_time_out);
+            CO_SLEEP_AGAIN(10);
         CO_END
         }
     }test_cort0, test_cort1;
-	printf("This will start an stdio echo test for the cort_time_waiter and cort_fd_waiter. \n");
+    printf("This will start an stdio echo test for the cort_time_waiter and cort_fd_waiter. \n");
     cort_timer_init();
     test_cort0.start();
     cort_timer_loop();

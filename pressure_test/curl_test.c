@@ -6,7 +6,7 @@
 int main(int argc, char *argv[])
 {
     CURL *curl;            
-	CURLcode res;          
+    CURLcode res;          
     curl = curl_easy_init();       
     if(curl != NULL){
         curl_easy_setopt(curl, CURLOPT_URL, "http://203.205.128.137/pingd?dm=news.qq.com&url=/");  

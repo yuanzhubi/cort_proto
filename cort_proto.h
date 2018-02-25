@@ -22,11 +22,11 @@
 struct cort_proto{ 
     typedef cort_proto* (*run_type)(cort_proto*);
     typedef cort_proto base_type;
-	
-	run_type get_run_function() const {
-		return data0.run_function;
-	}
-	
+    
+    run_type get_run_function() const {
+        return data0.run_function;
+    }
+    
     void set_run_function(run_type arg){
         data0.run_function = arg;
     }
@@ -41,20 +41,20 @@ struct cort_proto{
         return arg(this);
     }
     
-	void remove_parent(){
-		cort_parent = 0;
-	}
+    void remove_parent(){
+        cort_parent = 0;
+    }
     void set_parent(cort_proto *arg){
         cort_parent = arg;
     }
     cort_proto *get_parent() const{
         return cort_parent;
     }
-	
+    
     size_t get_wait_count() const{
         return this->data1.wait_count;
     }
-	
+    
     void set_wait_count(size_t wait_count){
         this->data1.wait_count = wait_count;
     }
@@ -74,7 +74,7 @@ struct cort_proto{
             this->incr_wait_count(1); 
             return __the_sub_cort; 
         }
-		return 0;
+        return 0;
     }
     
     void resume() {
@@ -97,7 +97,7 @@ protected:
     union{
         size_t wait_count;
         run_type leaf_cort_run_function;
-		cort_proto* real_cort_parent;
+        cort_proto* real_cort_parent;
     }data1;
     cort_proto* cort_parent;
 
@@ -160,7 +160,7 @@ struct cort_auto_delete : public cort_proto{
     
 #define CO_GET_LAST_ARG(...)  \
     CO_GET_NTH_ARG(__VA_ARGS__, CO_ARG_9, CO_ARG_8, CO_ARG_7, CO_ARG_6, CO_ARG_5, CO_ARG_4, CO_ARG_3, CO_ARG_2, CO_ARG_1, CO_ARG_0)(CO_ECHO, __VA_ARGS__)
-	
+    
 
 //CO_EXIT will end the coroutine function but it does not call on_finish. 
 #define CO_EXIT return 0
@@ -221,12 +221,12 @@ public: \
 //You can use CO_AWAIT_RANGE to wait variate count of sub-coroutine between the forward iterators.
 //It can not be used in any branch or loop.
 #define CO_AWAIT_RANGE(sub_cort_begin, sub_cort_end) do{ \
-		if(cort_wait_range(this, sub_cort_begin, sub_cort_end) != 0){ \
-			this->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
-			return this; \
-		} \
-	}while(false); \
-	CO_NEXT_STATE
+        if(cort_wait_range(this, sub_cort_begin, sub_cort_end) != 0){ \
+            this->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
+            return this; \
+        } \
+    }while(false); \
+    CO_NEXT_STATE
 
 //After wait in CO_AWAIT_AGAIN finished, it will not turn to next action but current action begin. It behaves like a loop. It can not be used in any branch or loop.
 #define CO_AWAIT_AGAIN(sub_cort) do{ \
@@ -270,21 +270,21 @@ public: \
 //Sometimes you want to stop the couroutine after a sub_coroutine is finished. Using CO_AWAIT_RETURN.
 //It must be used in a branch or loop, or else it must be followed by CO_END.
 #define CO_AWAIT_RETURN(sub_cort) do{ \
-		base_type* __the_sub_cort = (sub_cort)->cort_start();\
-		if(__the_sub_cort != 0){\
-			/*__the_sub_cort->set_parent(this->cort_parent); \
-			Above codes is not needed */ \
-			return __the_sub_cort; \
-		}\
-	}while(false); \
-	CO_RETURN   
+        base_type* __the_sub_cort = (sub_cort)->cort_start();\
+        if(__the_sub_cort != 0){\
+            /*__the_sub_cort->set_parent(this->cort_parent); \
+            Above codes is not needed */ \
+            return __the_sub_cort; \
+        }\
+    }while(false); \
+    CO_RETURN   
     
 //Sometimes you want to exit from the couroutine. Using CO_RETURN. It can be used anywhere in a coroutine non-static member function.
 //If you want to skip on_finish(for example, you delete this in your coroutine function), using CO_EXIT
 #define CO_RETURN do{ \
-		this->on_finish(); \
-		CO_EXIT;  \
-	}while(false)
+        this->on_finish(); \
+        CO_EXIT;  \
+    }while(false)
     
 //Sometimes you want to execute current action again later. Using CO_AGAIN. It can be used anywhere in a coroutine non-static member function.
 #define CO_AGAIN do{ \
@@ -406,7 +406,7 @@ T* cort_set_parent(T* son, cort_proto* parent = 0){
             cort_proto* run(){ \
                 CO_BEGIN \
                     CO_AWAIT(__the_sub_cort, CO_EXPAND(CO_GET_2ND_DEFAULT(cort_start, __VA_ARGS__))); \
-					__the_sub_cort->set_parent(0); \
+                    __the_sub_cort->set_parent(0); \
                     __the_sub_cort->CO_EXPAND(CO_GET_LAST_ARG(__VA_ARGS__)); \
                     CO_RETURN; \
                 CO_END \
@@ -422,20 +422,20 @@ T* cort_set_parent(T* son, cort_proto* parent = 0){
 //2. CO_YIELD, CO_AGAIN, CO_RETURN is enabled. CO_SLEEP and other API that "await" any coroutine is disabled.
 //3. cort_proto::await is also disabled 
 #define CO_SELF_AWAIT(member_func_name) do{ \
-	cort_proto * result = this->member_func_name(); \
-	if(result != 0){ \
-		set_self_await_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
-		return result; \
-	}  \
+    cort_proto * result = this->member_func_name(); \
+    if(result != 0){ \
+        set_self_await_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
+        return result; \
+    }  \
 }while(false); \
 CO_NEXT_STATE
 
 //If current function is waited by CO_SELF_AWAIT, using CO_SELF_RETURN instead of CO_RETURN to avoid on_finish called twice.
 #define CO_SELF_RETURN  do{ \
-	if(data1.leaf_cort_run_function != 0){ \
-		return resume_self_await(); \
-	} \
-	return 0; \
+    if(data1.leaf_cort_run_function != 0){ \
+        return resume_self_await(); \
+    } \
+    return 0; \
 }while(false)
-		
+        
 #endif
