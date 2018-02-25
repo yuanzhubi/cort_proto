@@ -54,6 +54,7 @@ struct timeout_list{
     }
 };
 
+
 struct cort_timer{
     timeout_list **timer_heap;
     size_t timer_size;
@@ -77,7 +78,7 @@ struct cort_timer{
         timer_capacity = capacity;
         for(size_t i = 0; i<short_timer_list_size; ++i){
             short_timer_search[i].timeout = i;
-            //short_timer_search[i].heap_pos = heap_npos;
+            short_timer_search[i].heap_pos = heap_npos;
         }
     }
     
@@ -185,6 +186,7 @@ struct cort_timer{
                 if(left_time > right_time){
                     left_data = right_data;
                     left_time = right_time;
+                    left_pos = right_pos;
                 }
             }
             if(left_time < my_time){
@@ -425,7 +427,7 @@ void cort_timer_loop(){
                     break;
                 }
                 
-                if(result < 0 && ptimer == eptimer->get_next_timer()){ //Maybe the timeout is reseted during cort_timer_poll.
+                if(result < 0 ){ //Nothing can happend but timeout.
                     ptimer->data->resume_on_timeout();
                 }
                 if(eptimer == 0){   //All the timer should stop work.
