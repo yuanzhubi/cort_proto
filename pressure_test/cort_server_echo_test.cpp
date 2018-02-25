@@ -108,7 +108,7 @@ int main(int argc, char* argv[]){
         sleep_ms_count = atoi(argv[1]);
     }
     cort_timer_init();  
-    printf( "This will start an echo server. Press ctrl+d to stop. \n"
+    printf( "This will start an echo server listen port 8888, 8889, 8890. Press ctrl+d to stop. \n"
             "arg1: sleep microseconds before response, default: 0. \n"
     );
     listener.set_listen_port(8888);
