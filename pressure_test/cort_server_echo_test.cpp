@@ -52,7 +52,7 @@ struct cort_tcp_echo_server : cort_tcp_ctrler{
         CO_BEGIN
             init_time_cost();
             set_timeout(300);
-            set_keep_alive(1000);
+            set_keep_alive(3000);
             set_recv_check_function(cort_tcp_echo_server::recv_check_function);
             alloc_recv_buffer();
             CO_AWAIT(lock_recv());
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]){
     }
     switcher.start();
     cort_repeater<print_result_cort> logger;
-    logger.set_repeat_per_second(1);
+    logger.set_repeat_per_second(1);    //log performance 1 time per second
     logger.start();
     cort_timer_loop();
     cort_timer_destroy();

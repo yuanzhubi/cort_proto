@@ -4,7 +4,7 @@
 #include "../net/cort_tcp_ctrler.h"
 
 int timeout = 300;
-int keepalive_timeout = 300;
+int keepalive_timeout = 3000;
 
 const char *ip = "127.0.0.1";
 unsigned short port =  8888;
@@ -153,7 +153,7 @@ int main(int argc, char* argv[]){
     tester.set_repeat_per_second(speed);
     
     cort_repeater<print_result_cort> logger;
-    logger.set_repeat_per_second(1);
+    logger.set_repeat_per_second(1);  //log performance 1 time per second
     logger.start();
 #else
     send_cort tester;
