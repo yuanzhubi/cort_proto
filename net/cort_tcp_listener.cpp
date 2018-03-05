@@ -75,7 +75,7 @@ uint8_t cort_tcp_listener::listen_connect(){
 	}
 	
 	if(backlog == 0){
-		backlog = 32;
+		backlog = 128;
 	}
 	
 	int result;
