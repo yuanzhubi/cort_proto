@@ -96,7 +96,7 @@ struct send_cort : public cort_auto_delete{
             //total_time_cost += cort_test0.get_time_cost();
             if(--total_test_count >= 0){
                 cort_test0.clear();
-                CO_AGAIN;
+                return this->start();
             }                
         CO_END
     }
