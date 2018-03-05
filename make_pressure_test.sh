@@ -2,6 +2,7 @@
 
 g++ -Wall -g  $@ *.cpp net/*.cpp  pressure_test/*.cpp -DCORT_SERVER_ECHO_TEST -Wl,-rpath=./ -o cort_server_echo_test.out
 g++ -Wall -g  $@ *.cpp net/*.cpp  pressure_test/*.cpp -DCORT_CLIENT_ECHO_TEST -Wl,-rpath=./ -o cort_client_echo_test.out
+g++ -Wall -g  $@ *.cpp net/*.cpp  pressure_test/*.cpp -DCORT_CLIENT_ECHO_INFINITE_TEST -Wl,-rpath=./ -o cort_client_echo_infinite_test.out
 
 #create a hooked version of libcurl.a
 cp pressure_test/curl/lib/libcurl.a pressure_test/curl/lib/libcurl_hook.a

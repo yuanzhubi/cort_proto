@@ -148,16 +148,13 @@ int main(int argc, char* argv[]){
         speed = (unsigned int)(atoi(argv[4]));
     }
     
-#if !defined(UNIT_TEST)
     cort_repeater<send_cort> tester;
     tester.set_repeat_per_second(speed);
     
     cort_repeater<print_result_cort> logger;
     logger.set_repeat_per_second(1);  //log performance 1 time per second
     logger.start();
-#else
-    send_cort tester;
-#endif
+
     
     tester.start();
     switcher.start();
