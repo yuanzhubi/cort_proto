@@ -79,7 +79,7 @@ struct send_cort : public cort_auto_delete{
     cort_proto* start(){
         CO_BEGIN
             cort_test0.set_dest_addr(ip, port);             
-            //cort_test0.set_timeout(timeout);
+            cort_test0.set_timeout(timeout);
             cort_test0.set_keep_alive(keepalive_timeout);
             send_content[send_size-1] = '\0';
             cort_test0.set_send_buffer(send_content, send_size);
@@ -93,10 +93,10 @@ struct send_cort : public cort_auto_delete{
             else{
                 ++success_count_total;
             }
-            //total_time_cost += cort_test0.get_time_cost();
+            total_time_cost += cort_test0.get_time_cost();
             if(--total_test_count >= 0){
                 cort_test0.clear();
-                CO_AGAIN;
+                return this->start();
             }                
         CO_END
     }
@@ -108,6 +108,7 @@ struct stdio_switcher : public cort_fd_waiter{
     void on_finish(){
         remove_poll_request();
         cort_timer_destroy();   //this will stop the timer loop;
+        total_test_count = 0;
     }
     cort_proto* start(){
     CO_BEGIN
