@@ -105,10 +105,10 @@ struct send_cort : public cort_auto_delete{
 #include <sys/epoll.h>
 struct stdio_switcher : public cort_fd_waiter{
     CO_DECL(stdio_switcher)
-    void on_finish(){
+    cort_proto* on_finish(){  
         remove_poll_request();
         cort_timer_destroy();   //this will stop the timer loop;
-        total_test_count = 0;
+        return cort_fd_waiter::on_finish();
     }
     cort_proto* start(){
     CO_BEGIN

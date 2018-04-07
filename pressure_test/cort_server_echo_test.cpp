@@ -35,7 +35,7 @@ struct cort_tcp_echo_server : cort_tcp_ctrler{
         return 0;
     }
     
-    void on_finish(){
+    cort_proto* on_finish(){
         cort_tcp_ctrler::on_finish();
         finish_time_cost();
         total_time_cost += get_time_cost();
@@ -47,6 +47,7 @@ struct cort_tcp_echo_server : cort_tcp_ctrler{
         }
         on_connection_inactive();
         delete this;
+        return 0;
     }
     cort_proto* start(){
         CO_BEGIN
@@ -76,12 +77,13 @@ cort_tcp_listener listener, listener1, listener2;
 #include <sys/epoll.h>
 struct stdio_switcher : public cort_fd_waiter{
     CO_DECL(stdio_switcher)
-    void on_finish(){
+    cort_proto* on_finish(){
         remove_poll_request();
         listener.stop_listen();
         listener1.stop_listen();
         listener2.stop_listen();
-        cort_timer_destroy();   
+        cort_timer_destroy();  
+        return 0;
     }
     cort_proto* start(){
     CO_BEGIN

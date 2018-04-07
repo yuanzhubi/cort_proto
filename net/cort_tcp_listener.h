@@ -2,7 +2,13 @@
 #define CORT_TCP_CONNECT_LISTEN_ACCEPT_H_
 
 #include "cort_tcp_ctrler.h"
+#include <arpa/inet.h>
+#include <netinet/tcp.h>
 
+struct cort_accept_result_t{
+    int accept_fd ;
+    struct sockaddr_in servaddr;
+};
 template<typename connection_t, typename connection_waiter_t>
 struct tcp_ctrler_static_creator{
 	typedef tcp_ctrler_static_creator<connection_t, connection_waiter_t> this_type;
@@ -11,8 +17,7 @@ struct tcp_ctrler_static_creator{
 		if(waiter == 0) {
 			waiter = new connection_waiter_t(fd);
 		}
-		if(init_poll_result != 0){
-		}
+        waiter->set_poll_result(init_poll_result);
 		result->set_connection_waiter(waiter);
 		result->set_dest_addr(dest_ip, dest_port);
 		((connection_waiter_t*)waiter)->ctrler_creator = this_type::create;
@@ -75,7 +80,7 @@ private:
 	uint8_t errnum;
 	union{
 		struct{
-			uint8_t enable_no_delay:1;
+			uint8_t disable_no_delay:1;
 			uint8_t enable_close_by_reset:1;
 			uint8_t disable_reuse_address:1 ;
 			uint8_t enable_accept_after_recv:1;
@@ -83,8 +88,8 @@ private:
 		uint8_t data;
 	}setsockopt_arg;
 public:
-	void set_enable_no_delay(uint8_t value = 1){
-		setsockopt_arg._.enable_no_delay = value;
+	void set_disable_no_delay(uint8_t value = 1){
+		setsockopt_arg._.disable_no_delay = value;
 	}
 	
 	void set_enable_close_by_reset(uint8_t value = 1){

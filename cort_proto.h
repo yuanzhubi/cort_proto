@@ -62,6 +62,13 @@ struct cort_proto{
     void incr_wait_count(size_t wait_count){
         this->data1.wait_count += wait_count;
     }
+    
+    void decr_wait_count(size_t wait_count){
+        this->data1.wait_count -= wait_count;
+        if(this->data1.wait_count == 0){
+            this->resume();
+        }
+    }
         
     //Sometimes outer codes want "this" coroutine to wait other coroutines that "this" does not know. Using the following function
     //Await can be only called after "this" coroutine is awaiting at least one coroutine now or CO_AWAIT_UNKNOWN.
@@ -87,6 +94,22 @@ struct cort_proto{
     
     virtual void clear(){
     }
+    
+    #define cort_then_impl(new_type, cort) cort->cort_then_function = new_type::cort_start_static;
+    
+    #define cort_then(new_type,...) CO_FOR_EACH_BINARY(cort_then_impl, new_type, __VA_ARGS__)
+    
+    #define cort_then_range(new_type, cort_begin, cort_end) do{ \
+        for(cort_proto* it = cort_begin; it != cort_end; ++it){ \
+            cort_then_impl(new_type, it); \
+        } \
+    }while(false)
+    
+    //C++11 needed
+    template<typename T>
+    void then(){
+        cort_then_function = T::cort_start_static;
+    }
 
 protected:
     union{
@@ -100,26 +123,39 @@ protected:
         cort_proto* real_cort_parent;
     }data1;
     cort_proto* cort_parent;
+    run_type cort_then_function;
 
 public: //Following members should be protected, however the subclass defined in a function can not access them @vc2008
-    inline void on_finish(){
+    inline cort_proto* on_finish(){
+        cort_proto* result;
+        if(cort_then_function != 0 ){
+            result = cort_then_function(this);
+            cort_then_function = 0;
+            if(result != 0){
+                 return result;
+            }
+        }
         cort_parent = 0;
         data0.run_function = 0;
+        return 0;
     }
-
+    
     cort_proto(){
         //We do not use initialize list because we want to remove the initialize order limit.
         cort_parent = 0;
         data0.run_function = 0;
         data1.leaf_cort_run_function = 0;
-    }   
+        cort_then_function = 0;
+    }
+    
 protected:
-    virtual ~cort_proto(){}                 
+    virtual ~cort_proto(){}
 };                                                                  
 
 struct cort_auto_delete : public cort_proto{
-    void on_finish(){
+    cort_proto* on_finish(){
         delete this;
+        return 0;
     }
 };
 
@@ -140,6 +176,17 @@ struct cort_auto_delete : public cort_proto{
 #define CO_FE_8(co_call, x, ...) co_call(x) CO_FE_7(co_call, __VA_ARGS__)
 #define CO_FE_9(co_call, x, ...) co_call(x) CO_FE_8(co_call, __VA_ARGS__)
 
+#define CO_FE_BINARY_0(co_call, x, y,...) co_call(x,y)
+#define CO_FE_BINARY_1(co_call, x, y,...) co_call(x,y) CO_FE_BINARY_0(co_call, x, __VA_ARGS__)
+#define CO_FE_BINARY_2(co_call, x, y,...) co_call(x,y) CO_FE_BINARY_1(co_call, x, __VA_ARGS__)
+#define CO_FE_BINARY_3(co_call, x, y,...) co_call(x,y) CO_FE_BINARY_2(co_call, x, __VA_ARGS__)
+#define CO_FE_BINARY_4(co_call, x, y,...) co_call(x,y) CO_FE_BINARY_3(co_call, x, __VA_ARGS__)
+#define CO_FE_BINARY_5(co_call, x, y,...) co_call(x,y) CO_FE_BINARY_4(co_call, x, __VA_ARGS__)
+#define CO_FE_BINARY_6(co_call, x, y,...) co_call(x,y) CO_FE_BINARY_5(co_call, x, __VA_ARGS__)
+#define CO_FE_BINARY_7(co_call, x, y,...) co_call(x,y) CO_FE_BINARY_6(co_call, x, __VA_ARGS__)
+#define CO_FE_BINARY_8(co_call, x, y,...) co_call(x,y) CO_FE_BINARY_7(co_call, x, __VA_ARGS__)
+#define CO_FE_BINARY_9(co_call, x, y,...) co_call(x,y) CO_FE_BINARY_8(co_call, x, __VA_ARGS__)
+
 #define CO_ARG_0(co_call, x, ...) co_call(x)
 #define CO_ARG_1(co_call, x, ...) CO_ARG_0(co_call, __VA_ARGS__)
 #define CO_ARG_2(co_call, x, ...) CO_ARG_1(co_call, __VA_ARGS__)
@@ -158,12 +205,19 @@ struct cort_auto_delete : public cort_proto{
 #define CO_FOR_EACH(x, ...) \
     CO_EXPAND(CO_GET_NTH_ARG(__VA_ARGS__, CO_FE_9, CO_FE_8, CO_FE_7, CO_FE_6, CO_FE_5, CO_FE_4, CO_FE_3, CO_FE_2, CO_FE_1, CO_FE_0)(x, __VA_ARGS__))
     
+#define CO_FOR_EACH_BINARY(x, y, ...) \
+    CO_EXPAND(CO_GET_NTH_ARG(__VA_ARGS__, CO_FE_BINARY_9, CO_FE_BINARY_8, CO_FE_BINARY_7, CO_FE_BINARY_6, CO_FE_BINARY_5,\
+        CO_FE_BINARY_4, CO_FE_BINARY_3, CO_FE_BINARY_2, CO_FE_BINARY_1, CO_FE_BINARY_0)(x, y, __VA_ARGS__))
+    
 #define CO_GET_LAST_ARG(...)  \
     CO_GET_NTH_ARG(__VA_ARGS__, CO_ARG_9, CO_ARG_8, CO_ARG_7, CO_ARG_6, CO_ARG_5, CO_ARG_4, CO_ARG_3, CO_ARG_2, CO_ARG_1, CO_ARG_0)(CO_ECHO, __VA_ARGS__)
     
 
 //CO_EXIT will end the coroutine function but it does not call on_finish. 
-#define CO_EXIT return 0
+#define CO_EXIT do{ \
+        data0.run_function = 0; \
+        return 0; \
+    }while(false)
 
 #define CO_SWITCH return this
     
@@ -183,6 +237,7 @@ struct cort_example : public cort_proto{
 #define CO_DECL(...) \
 public: \
     CO_DECL_PROTO(__VA_ARGS__) \
+    static inline base_type* cort_start_static(cort_proto* this_ptr){return ((cort_type*)this_ptr)->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();}\
     inline base_type* cort_start() { return this->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();/*coroutine function name is start for default*/}                      
 
 //If you this class is not defined as the coroutine entrance, you can CO_DECL_PROTO instead to avoid defines a enter function.
@@ -281,10 +336,7 @@ public: \
     
 //Sometimes you want to exit from the couroutine. Using CO_RETURN. It can be used anywhere in a coroutine non-static member function.
 //If you want to skip on_finish(for example, you delete this in your coroutine function), using CO_EXIT
-#define CO_RETURN do{ \
-        this->on_finish(); \
-        CO_EXIT;  \
-    }while(false)
+#define CO_RETURN return this->on_finish(); 
     
 //Sometimes you want to execute current action again later. Using CO_AGAIN. It can be used anywhere in a coroutine non-static member function.
 #define CO_AGAIN do{ \

@@ -82,7 +82,22 @@ cort_proto* fibonacci_cort::start(){
         //if(!cond){CO_SKIP_AWAIT;}
         //CO_AWAIT_ALL(cort);
         
-        CO_AWAIT_RANGE_IF(true, corts, corts+2);
+        struct cort_then_output: public fibonacci_cort{
+            CO_DECL(cort_then_output)
+            cort_proto* start(){
+                printf("intput:%d, output:%d! \n", n, result);
+                return 0;
+            }
+        };
+        
+        cort_then(cort_then_output, corts[0]); //When corts[0] finished, run as cort_then_output.
+        cort_then(cort_then_output, corts[1]);
+        //Or you can simply
+        //cort_then(cort_then_output, corts[0], corts[1]);
+        //Or if c++11 supported
+        //corts[0]->then<cort_then_output>(); corts[1]->then<cort_then_output>();
+        CO_AWAIT_ALL(corts[0], corts[1])
+        //CO_AWAIT_RANGE_IF(true, corts, corts+2);
         //CO_AWAIT_IF(true, corts[0]); 
         //CO_AWAIT_IF(true, corts[1]);    
 

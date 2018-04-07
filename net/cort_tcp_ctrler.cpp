@@ -141,7 +141,7 @@ static cort_proto* stop_poll_when_notification(cort_proto* arg){
 	return tcp_cort;
 }
 
-void cort_tcp_connection_waiter::on_finish(){
+cort_proto* cort_tcp_connection_waiter::on_finish(){
 	clear_poll_result();
 	set_run_function(stop_poll_when_notification);
 	if(get_parent() == 0){
@@ -153,6 +153,9 @@ void cort_tcp_connection_waiter::on_finish(){
 			set_poll_request((~EPOLLOUT) & poll_req);
 		}
 	}
+    //You are not really finished! So do not call on_finish function of your super class to avoid clear_timeout and clear run_function.
+    //return cort_fd_waiter::on_finish();
+    return 0;
 }
 
 void cort_tcp_connection_waiter_client::keep_alive(uint32_t keep_alive_ms, uint32_t ip_v4, uint16_t port_v4, uint16_t type_key){
@@ -567,13 +570,13 @@ void cort_tcp_ctrler::on_connection_inactive(){
 	}
 }
 
-void cort_tcp_ctrler::on_finish(){
+cort_proto* cort_tcp_ctrler::on_finish(){
 	if(connection_waiter){
 		if(get_errno() != 0){
 			connection_waiter.clear();
 		}
 	}
-	cort_proto::on_finish();
+	return cort_proto::on_finish();
 }
 
 static cort_proto* release_when_notification(cort_proto* arg){
@@ -630,9 +633,9 @@ size_t cort_tcp_connection_waiter_client::clear_keep_alive_connection(size_t cou
 	return result;
 }
 
-void cort_tcp_request_response::on_finish(){
+cort_proto* cort_tcp_request_response::on_finish(){
 	finish_time_cost();
-	cort_tcp_ctrler::on_finish();
+	return cort_tcp_ctrler::on_finish();
 }
 
 cort_proto* cort_tcp_request_response::start(){

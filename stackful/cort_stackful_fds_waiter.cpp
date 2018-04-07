@@ -47,7 +47,6 @@ void cort_stackful_fds_waiter::before_stackless_resume(){
 }
 
 static void set_non_block(int fd){  
-    
     int flag = fcntl(fd, F_GETFL);
     int new_flag = flag | O_NONBLOCK;
     if(flag != new_flag){

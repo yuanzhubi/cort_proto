@@ -87,10 +87,11 @@ struct send_cort : public cort_auto_delete{
 #include <sys/epoll.h>
 struct stdio_switcher : public cort_fd_waiter{
     CO_DECL(stdio_switcher)
-    void on_finish(){
+    cort_proto* on_finish(){
         remove_poll_request();
         cort_timer_destroy();   //This will stop the timer loop; 
                                 //but you need to stop wait stdin first by remove_poll_request, or else the loop will wait this cort.
+        return cort_fd_waiter::on_finish();
     }
     cort_proto* start(){
     CO_BEGIN
@@ -104,7 +105,6 @@ struct stdio_switcher : public cort_fd_waiter{
         char buf[1024] ;
         int result = read(0, buf, 1023);
         if(result == 0){    //using ctrl+d in *nix
-
             CO_RETURN;
         }
         CO_AGAIN;

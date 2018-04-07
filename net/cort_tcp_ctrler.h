@@ -280,7 +280,7 @@ struct cort_tcp_connection_waiter : public cort_fd_waiter{
 	CO_DECL_PROTO(cort_tcp_connection_waiter)
 
 	//We assert the parent cort should only await this cort, and do not need other time information.
-	void on_finish();
+	cort_proto* on_finish();
 	
 	//You can await this function.
 	cort_proto* try_connect();
@@ -501,7 +501,7 @@ public:
 	}
 	
 protected:
-	void on_finish();
+	cort_proto* on_finish();
 	virtual void on_connect_finish(){};
 	
 	virtual void on_send_finish(){};
@@ -521,7 +521,7 @@ struct cort_tcp_request_response : public cort_tcp_ctrler{
 	//You should set_recv_buffer_ctrl to inform when the receive is finished.
 	cort_proto* start();
 protected:
-	void on_finish();
+	cort_proto* on_finish();
 };
 
 struct cort_tcp_connection_waiter_client : public cort_tcp_connection_waiter{

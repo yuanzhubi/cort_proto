@@ -73,7 +73,7 @@ public:
     }
     time_ms_t get_timeout_time() const;
     uint32_t get_time_past() const;     
-    void on_finish();
+    cort_proto* on_finish();
     void set_timeout(time_ms_t timeout_ms);
     void clear_timeout();
     virtual void clear();
@@ -247,8 +247,9 @@ struct cort_sleeper : public cort_timeout_waiter{
         CO_END
     }
 protected:
-    void on_finish(){
+    cort_proto* on_finish(){
         delete this;
+        return 0;
     }
 };
 

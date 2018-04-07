@@ -50,7 +50,10 @@ struct cort_stackful_fds_waiter: public cort_fd_waiter, public cort_stackful{
         for(uint i = 0; i< total_count; ++i){
             if(fds_array[i].fd == fd){
                 --reserved_count;
-                fds_array[i] = fds_array[reserved_count];               
+                if(i != reserved_count){
+                    fds_array[i] = fds_array[reserved_count]; 
+                }
+                break;
             }
         }
     }

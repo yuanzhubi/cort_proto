@@ -474,10 +474,11 @@ void cort_timeout_waiter::clear_timeout(){
         that = 0;
     }
 }
-void cort_timeout_waiter::on_finish(){
+
+cort_proto* cort_timeout_waiter::on_finish(){
     time_cost_ms = (time_cost_ms & normal_masker) | ((time_cost_ms_t)(cort_timer_now_ms() - start_time_ms));
     clear_timeout();
-    cort_proto::on_finish();
+    return cort_proto::on_finish();
 }
 void cort_timeout_waiter::set_timeout(time_ms_t timeout_ms){
     clear_timeout();
@@ -542,14 +543,17 @@ int cort_fd_waiter::remove_poll_request(){
     if(cort_fd < 0){
         return 0;
     }
-    struct epoll_event event;
-    int result = epoll_ctl(epfd, EPOLL_CTL_DEL, cort_fd, &event);
-    if(result == 0 && poll_request != 0){
-        --epollfd_total_count;
-        //fd_trace_set.erase(cort_fd);
-        poll_request = 0;
+    
+    if(poll_request != 0){
+        struct epoll_event event;
+        int result = epoll_ctl(epfd, EPOLL_CTL_DEL, cort_fd, &event);
+        if(result == 0){
+            --epollfd_total_count;
+            //fd_trace_set.erase(cort_fd);
+            poll_request = 0;
+        }
     }
-    return result;
+    return 0;
 }
 
 void cort_fd_waiter::close_cort_fd(){
@@ -564,6 +568,7 @@ void cort_fd_waiter::close_cort_fd(){
     poll_request = 0;
     poll_result = 0;
 }
+
 void cort_fd_waiter::remove_cort_fd(){
     remove_poll_request();
     set_cort_fd(-1);

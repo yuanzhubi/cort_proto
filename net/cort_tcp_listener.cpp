@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <stdio.h>
+#include <vector>
 
 #include "cort_tcp_listener.h"
 
@@ -107,20 +108,26 @@ cort_proto* cort_tcp_listener::start(){
 			stop_listen();
 			CO_RETURN;	
 		}
-		int accept_fd ;
-		int listen_fd = get_cort_fd();
-		struct sockaddr_in servaddr;
-		socklen_t addrlen = sizeof(servaddr);
-	start_accept:
+		
+		int listen_fd = get_cort_fd();	
+        const int max_accept_one_loop = 256;
+        cort_accept_result_t accept_result[max_accept_one_loop];
+        socklen_t addrlen = sizeof(accept_result->servaddr);
+        int current_connection = 0;
+        int thread_errno = 0;
+    start_accept:
+    for(; current_connection<max_accept_one_loop; ++current_connection){
+        int &accept_fd = accept_result[current_connection].accept_fd;
+        sockaddr_in& servaddr = accept_result[current_connection].servaddr;
 		#if !defined(__linux__)
 		accept_fd = accept(listen_fd, (struct sockaddr*)&servaddr, &addrlen);
 		if(accept_fd > 0){
 			int flag = fcntl(accept_fd, F_GETFL);
 			if (-1 == flag || fcntl(accept_fd, F_SETFL, flag | O_NONBLOCK) == -1){
 				close(accept_fd);
-				CO_AGAIN;
+				break;
 			}
-			if(setsockopt_arg._.enable_no_delay > 0){
+			if(setsockopt_arg._.disable_no_delay == 0){
 				int flag = 1;
 				setsockopt(accept_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
 			}
@@ -131,13 +138,11 @@ cort_proto* cort_tcp_listener::start(){
 				lin.l_linger = (flag == 1? 0:flag);
 				setsockopt(accept_fd, SOL_SOCKET, SO_LINGER,(&lin), sizeof(lin));  
 			}			
-			ctrler_creator(accept_fd, servaddr.sin_addr.s_addr, servaddr.sin_port, 0, (setsockopt_arg._.enable_accept_after_recv ? EPOLLIN : 0)); //Yes you can read now!
-			goto start_accept;
 		}
 		#else
 		accept_fd = accept4(listen_fd, (struct sockaddr*)&servaddr, &addrlen, SOCK_NONBLOCK);
 		if(accept_fd > 0){
-			if(setsockopt_arg._.enable_no_delay > 0){
+			if(setsockopt_arg._.disable_no_delay == 0){
 				int flag = 1;
 				setsockopt(accept_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
 			}
@@ -148,15 +153,27 @@ cort_proto* cort_tcp_listener::start(){
 				lin.l_linger = (flag == 1? 0:flag);
 				setsockopt(accept_fd, SOL_SOCKET, SO_LINGER,(&lin), sizeof(lin));  
 			}
-			ctrler_creator(accept_fd, servaddr.sin_addr.s_addr, servaddr.sin_port, 0, (setsockopt_arg._.enable_accept_after_recv ? EPOLLIN : 0)); //Yes you can read now!
-			goto start_accept;
 		}
 		#endif
-		
-		int thread_errno = errno;
+        else{
+            thread_errno = errno;
+            break;
+        }
+	}
+        while(current_connection != 0){
+            --current_connection;
+            int &accept_fd = accept_result[current_connection].accept_fd;
+            sockaddr_in& servaddr = accept_result[current_connection].servaddr;
+            ctrler_creator(accept_fd, servaddr.sin_addr.s_addr, servaddr.sin_port, 0, (setsockopt_arg._.enable_accept_after_recv ? EPOLLIN : 0)); //Yes you can read now!
+        }
+        
 		if (thread_errno == EINTR) {
+            thread_errno = 0;
 			goto start_accept;
 		}
+        if(thread_errno == 0){
+            goto start_accept;
+        }
 		if ((thread_errno == EAGAIN) || (thread_errno == EWOULDBLOCK) || (on_accept_error() == 0)){
 			CO_AGAIN;
 		}
@@ -179,15 +196,15 @@ cort_proto* cort_tcp_listener::on_accept_error(){
 }
 
 static void remove_keep_alive(cort_tcp_server_waiter* tcp_cort){
-	int result = tcp_cort->get_poll_result();
-	if(result == 0 || (((EPOLLHUP|EPOLLRDHUP|EPOLLERR) & result) != 0)){//timeout
+	uint32_t result = tcp_cort->get_poll_result();
+	if(result == 0 || (((EPOLLRDHUP|EPOLLERR) & result) != 0)){//timeout
 		tcp_cort->close_cort_fd();
 		tcp_cort->release();
 	}
 	else{
 		tcp_cort->clear();	
 		tcp_cort->remove_ref();
-		tcp_cort->ctrler_creator(tcp_cort->get_cort_fd(), tcp_cort->ip_v4, tcp_cort->port_v4, tcp_cort, EPOLLIN);
+		tcp_cort->ctrler_creator(tcp_cort->get_cort_fd(), tcp_cort->ip_v4, tcp_cort->port_v4, tcp_cort, result);
 	}
 }
 
