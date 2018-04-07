@@ -61,6 +61,7 @@ struct print_result_cort: public cort_auto_delete{
     }
 };
 int64_t total_test_count = 100000000000;
+bool ended = false;
 struct send_cort : public cort_auto_delete{
     CO_DECL(send_cort)
     cort_tcp_request_response cort_test0;
@@ -94,6 +95,9 @@ struct send_cort : public cort_auto_delete{
                 ++success_count_total;
             }
             total_time_cost += cort_test0.get_time_cost();
+            if(ended){
+                CO_RETURN;
+            }
             if(--total_test_count >= 0){
                 cort_test0.clear();
                 return this->start();
@@ -107,6 +111,7 @@ struct stdio_switcher : public cort_fd_waiter{
     CO_DECL(stdio_switcher)
     cort_proto* on_finish(){  
         remove_poll_request();
+        ended = true;
         cort_timer_destroy();   //this will stop the timer loop;
         return cort_fd_waiter::on_finish();
     }

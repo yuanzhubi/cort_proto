@@ -1,2 +1,2 @@
 #!/bin/bash
-./make_pressure_test.sh -O2 -DNDEBUG
+./make_pressure_test.sh -O2 -DNDEBUG $@

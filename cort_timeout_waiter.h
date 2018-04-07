@@ -239,7 +239,7 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms);
 
 struct cort_sleeper : public cort_timeout_waiter{
     CO_DECL(cort_sleeper)
-    cort_sleeper(time_ms_t timeout_ms){set_timeout(timeout_ms);}
+    cort_sleeper(time_ms_t timeout_ms = 0){set_timeout(timeout_ms);}
     cort_proto* start(){
         CO_BEGIN
             CO_YIELD();
