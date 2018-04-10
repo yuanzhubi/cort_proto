@@ -281,6 +281,7 @@ public: \
 
 //接下来我们就可以来定义我们的协程入口函数了。这个函数的函数签名是固定的：返回一个cort_proto*的无参非静态成员函数。
 //注意他和普通的成员函数一样，不一定需要定义在类定义里，可以在类里给一个声明，在别的文件里分离定义亦可。
+//他返回0表示已经执行完成，非0表示暂时还没有完成。
 //假设我们的协程入口函数名字是默认值start
     //Now define you enter function. 
     //Anyway, you can define it in another file or out of class, leaving only declaration but not implement here.
@@ -518,10 +519,13 @@ T* cort_set_parent(T* son, cort_proto* parent = 0){
     return son;
 }
 
+//接下来介绍一些比较冷门的功能。
+
 //如果你直接调用了协程的一个协程入口成员函数cort->start()，那么本质上就是发起了一次异步调用加上可能的then回调而没有任何等待。
 //事实上cort->start() 是很常见的根协程启动方式。
-//但是如果cort已经被使用过一次了，注意他是否被合适的清理过以备第二次复用（可能某些写的不太好的协程子类并不能做到这一点）。
-//你可以使用CO_ASYNC(cort, start)或者CO_ASYNC(cort) 这样的语法来在cort->start()执行前强制发起基类清理以防万一。
+//但是如果cort已经被使用过一次了，注意他是否被合适的清理过以备第二次复用。可能某些协程子类使用了CO_EXIT来结束协程
+//导致on_finish函数并未被调用所以cort并未完成清理。
+//你也可以使用CO_ASYNC(cort, start)或者CO_ASYNC(cort) 这样的语法来在cort->start()执行前强制发起最基本的清理以防万一。
 //他可以在任何地方使用，甚至在协程函数体外部。 
 //CO_ASYNC will async call a coroutine.
 //First argument is the coroutine, the second is the enter function name(or your coroutine enter function name, if there exist only one argument).
