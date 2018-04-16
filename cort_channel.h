@@ -24,7 +24,7 @@ public:
             waiter->decr_wait_count(1);
         }
         else if(!recvers.empty()){
-            waiter = (cort_proto*)pop_back();
+            waiter = (cort_proto*)recvers.pop_back();
             ++data0.result_int;
             waiter->decr_wait_count(1);
         }
@@ -39,7 +39,7 @@ public:
     }
     
     cort_proto* wait_popable(){
-        if(objects.size() > data0.result_int;){
+        if(objects.size() > data0.result_int){
             ++data0.result_int;
             return 0;
         }
@@ -72,7 +72,7 @@ public:
             waiter->decr_wait_count(1);
         }
         else if(!recvers.empty()){
-            waiter = (cort_proto*)pop_back();
+            waiter = (cort_proto*)recvers.pop_back();
             ++data0.result_int;
             waiter->decr_wait_count(1);
         }
@@ -86,7 +86,7 @@ public:
     }
     
     cort_proto* wait_popable(){
-        if(objects > data0.result_int;){
+        if(objects > data0.result_int){
             ++data0.result_int;
             return 0;
         }

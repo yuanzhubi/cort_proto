@@ -21,19 +21,19 @@ public:
         return the_size == 0;
     }
     
-    cort_ptr_pool(){
+    cort_pod_pool(){
         ptr = (T*)malloc(sizeof(T)*8);
         the_size = 0;
         the_capacity = 8;
     }
     
-    cort_ptr_pool(unsigned int init_capacity){
+    cort_pod_pool(unsigned int init_capacity){
         ptr = (T*)malloc(sizeof(T) * init_capacity);
         the_size = 0;
         the_capacity = init_capacity;
     }
     
-    ~cort_ptr_pool(){
+    ~cort_pod_pool(){
         free(ptr);
     }
     

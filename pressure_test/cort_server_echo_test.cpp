@@ -7,7 +7,7 @@ unsigned int error_count_total;
 unsigned int success_count_total;
 unsigned int total_time_cost;
 
-struct print_result_cort: public cort_auto_delete{
+struct print_result_cort: public cort_auto{
     CO_DECL(print_result_cort)
     cort_proto* start(){
         CO_BEGIN

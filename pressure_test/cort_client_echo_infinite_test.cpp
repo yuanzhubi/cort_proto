@@ -46,7 +46,7 @@ struct errnum_counter{
     
 }error_counter;
 
-struct print_result_cort: public cort_auto_delete{
+struct print_result_cort: public cort_auto{
     CO_DECL(print_result_cort)
     cort_proto* start(){
         CO_BEGIN
@@ -62,7 +62,7 @@ struct print_result_cort: public cort_auto_delete{
 };
 int64_t total_test_count = 100000000000;
 bool ended = false;
-struct send_cort : public cort_auto_delete{
+struct send_cort : public cort_auto{
     CO_DECL(send_cort)
     cort_tcp_request_response cort_test0;
     

@@ -32,11 +32,17 @@ struct cort_proto{
         data0.run_function = arg;
     }
     
+    //当前协程是否已经结束或者未启动
+    bool is_finished() const{
+        return data0.run_function == 0;
+    }
+    
     //协程内如果自己想等待自己（简称自等待），使用这个函数来设置下一次执行的函数。
     //这是一个罕有使用的功能。
     void set_self_await_function(run_type arg){
         data1.leaf_cort_run_function = arg;
     }
+    
     //从自等待中恢复
     cort_proto* resume_self_await(){
         run_type arg = data1.leaf_cort_run_function;
@@ -93,7 +99,9 @@ struct cort_proto{
     void resume() {
         //We save the cort_parent before run_function. So you can "delete this" in your subclass overloaded on_finish function after parent class on_finish function is called and return 0.
         cort_proto* cort_parent_save = cort_parent;
-        if((*(this->data0.run_function))(this) == 0 && cort_parent_save != 0 && (--(cort_parent_save->data1.wait_count)) == 0){
+        if((*(this->data0.run_function))(this) == 0 && 
+            cort_parent_save != 0 && 
+            (--(cort_parent_save->data1.wait_count)) == 0){
             cort_parent_save->resume();
         }
     }
@@ -102,37 +110,20 @@ struct cort_proto{
     virtual void clear(){
     }
     
-    
-    #define cort_then_impl(new_type, cort) cort->cort_then_function = new_type::cort_start_static;
-    
-    //有时候你依然喜欢传统的 then或者when 这种完成回调功能。你可以使用cort_then来实现类似的语法。
-    //struct cort_then_output: public fibonacci_cort{
-    //        CO_DECL(cort_then_output)
-    //        cort_proto* start(){
-    //            printf("intput:%d, output:%d! \n", n, result);
-    //            return 0;
-    //        }
-    //    };
-    //https://github.com/yuanzhubi/cort_proto/blob/e3c0aba65299331cdaa04f0dc500ecc8b2781b23/unit_test/cort_proto_test.cpp#L93
-    //cort_then(cort_then_output, corts[0]); 
-    //CO_AWAIT(corts[0]);
-    //这里使用子类化的方法来实现完成级联，CO_AWAIT里面 fibonacci_cort类型的corts[0]执行完毕后会以cort_then_output 的方式来继续执行。
-    //注意他依然只能访问fibonacci_cort，而且不能增加成员变量或者定义或重写虚函数。
-    //cort_then的第一个参数是子类名字，第二个是需要执行then级联的协程地址，你也可以加上更多的协程地址作为cort_then的参数
-    #define cort_then(new_type,...) CO_FOR_EACH_BINARY(cort_then_impl, new_type, __VA_ARGS__)
-    
-    #define cort_then_range(new_type, cort_begin, cort_end) do{ \
-        for(cort_proto* it = cort_begin; it != cort_end; ++it){ \
-            cort_then_impl(new_type, it); \
-        } \
-    }while(false)
-    
-    //C++11 needed, because T usually is a local class, disabled to be the template argument.
+    //If T is a local coroutine class, c++11 needed because c++03 disabled local class to be the template argument.
     //corts[0].then<T>;
     template<typename T>
     void then(){
-        cort_then_function = T::cort_start_static;
+        data10.cort_then_function = T::cort_start_static;
     }
+    
+    void then(run_type then_function){
+        data10.cort_then_function = then_function;
+    }
+    run_type then()const {
+        return data10.cort_then_function;
+    }
+    
 
 protected:
     union{
@@ -146,18 +137,21 @@ protected:
         cort_proto* real_cort_parent;
     }data1;
     cort_proto* cort_parent;
-    run_type cort_then_function;
+    
+    union{
+        size_t rest_reference_count;
+        run_type cort_then_function;
+    }data10;
 
 public: //Following members should be protected, however the subclass defined in a function can not access them @vc2008
     //on_finish 函数是一个非虚函数，每个协程在自己结束时都会（通过宏，所以不会损失类型信息而无需使用虚函数）调用它
     //你也可以在自己的协程子类中重载它。记得调用父类的on_finish函数否则会丧失诸如then这些功能。
     inline cort_proto* on_finish(){
-        cort_proto* result;
-        if(cort_then_function != 0 ){
-            result = cort_then_function(this);
-            cort_then_function = 0;
+        if(data10.cort_then_function != 0 ){
+            cort_proto* result = data10.cort_then_function(this);
+            data10.cort_then_function = 0;
             if(result != 0){
-                 return result;
+                return result;
             }
         }
         cort_parent = 0;
@@ -170,19 +164,22 @@ public: //Following members should be protected, however the subclass defined in
         cort_parent = 0;
         data0.run_function = 0;
         data1.leaf_cort_run_function = 0;
-        cort_then_function = 0;
+        data10.cort_then_function = 0;
     }
     
 protected:
     virtual ~cort_proto(){}
 };                                                                  
 
-struct cort_auto_delete : public cort_proto{
+template<typename T>
+struct cort_auto_delete : public T{
     cort_proto* on_finish(){
         delete this;
         return 0;
     }
 };
+
+typedef cort_auto_delete<cort_proto> cort_auto;
 
 #define CO_GET_1ST_ARG(x,...) x
 #define CO_GET_2ND_ARG(x,y,...) y
@@ -200,6 +197,8 @@ struct cort_auto_delete : public cort_proto{
 #define CO_FE_7(co_call, x, ...) co_call(x) CO_FE_6(co_call, __VA_ARGS__)
 #define CO_FE_8(co_call, x, ...) co_call(x) CO_FE_7(co_call, __VA_ARGS__)
 #define CO_FE_9(co_call, x, ...) co_call(x) CO_FE_8(co_call, __VA_ARGS__)
+
+
 
 #define CO_FE_BINARY_0(co_call, x, y,...) co_call(x,y)
 #define CO_FE_BINARY_1(co_call, x, y,...) co_call(x,y) CO_FE_BINARY_0(co_call, x, __VA_ARGS__)
@@ -229,6 +228,9 @@ struct cort_auto_delete : public cort_proto{
 
 #define CO_FOR_EACH(x, ...) \
     CO_EXPAND(CO_GET_NTH_ARG(__VA_ARGS__, CO_FE_9, CO_FE_8, CO_FE_7, CO_FE_6, CO_FE_5, CO_FE_4, CO_FE_3, CO_FE_2, CO_FE_1, CO_FE_0)(x, __VA_ARGS__))
+
+#define CO_COUNT_INC(x) +1
+#define CO_ARG_COUNT(...) (0+CO_FOR_EACH(CO_COUNT_INC, __VA_ARGS__))
     
 #define CO_FOR_EACH_BINARY(x, y, ...) \
     CO_EXPAND(CO_GET_NTH_ARG(__VA_ARGS__, CO_FE_BINARY_9, CO_FE_BINARY_8, CO_FE_BINARY_7, CO_FE_BINARY_6, CO_FE_BINARY_5,\
@@ -299,7 +301,7 @@ public: \
 //Now you can define the coroutine function codes, using the class member as the local variable.
 //注意你可以在cort_example里面定义其他成员函数，里面的代码也是用CO_BEGIN CO_END所包围：
 //是的, 我们允许我们的一个协程有多个入口函数，在CO_DECL中声明的名字只是个默认入口函数而已，
-//我们接下来会介绍如何在CO_WAIT等API中使用非默认的入口函数。
+//我们接下来会介绍如何在CO_AWAIT等API中使用非默认的入口函数。
 
 
 //在协程函数里，你可以使用以下的等待API，这些API只能在协程函数内部使用。
@@ -314,10 +316,10 @@ public: \
 //注意CO_AWAIT_ALL不能使用在协程函数的条件分支或者循环体内部，只能使用在第一级大括号内。
 //You can use CO_AWAIT_ALL to wait no more than 10 sub-coroutine. It can not be used in any branch or loop.
 #define CO_AWAIT_ALL(...) do{ \
-        size_t current_wait_count = 0; \
+        size_t __current_wait_count = 0; \
         CO_FOR_EACH(CO_AWAIT_MULTI_IMPL, __VA_ARGS__) \
-        if(current_wait_count != 0){ \
-            this->set_wait_count(current_wait_count); \
+        if(__current_wait_count != 0){ \
+            this->set_wait_count(__current_wait_count); \
             this->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
             return this; \
         } \
@@ -335,12 +337,10 @@ public: \
         } \
     }while(false); \
     CO_NEXT_STATE
-    
-
+        
 //上面我们已经介绍了很多等待API，我们把每一个等待API调用处的下一行语句称为“恢复点”。
 //我们注意到他们不能使用在循环体，条件分支等第二层或者更深层大括号内的限制（这些限制并非由于我们的设计，而是C++文法导致的），
 //所以我们提供一些专有的辅助API来模拟循环和条件分支以及跳转。
-
 
 //CO_AWAIT_AGAIN类似于CO_AWAIT但是他从等待中恢复会跳转到上一个“恢复点” 而不是下一个去执行。行为类似一个循环。
 //After wait in CO_AWAIT_AGAIN finished, it will not turn to next action but current action begin. It behaves like a loop. It can not be used in any branch or loop.
@@ -374,13 +374,13 @@ public: \
         this->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
         return this;   \
     }while(false); \
-    CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
+    CO_NEXT_STATE
     
 #define CO_AWAIT_UNKNOWN_AGAIN() do{ \
         this->set_run_function((run_type)(&do_exec_static)); \
     }while(false); \
     return this;   \
-    CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
+   CO_NEXT_STATE
     
 //在lua等语言中，拥有CO_AWAIT_UNKNOWN职责的关键字是yield，所以我们特意取了类似的别名。
 #define CO_YIELD() CO_AWAIT_UNKNOWN()
@@ -424,6 +424,9 @@ public: \
 //他们可以在协程代码中的任何地方使用，除非没有下一个恢复点了。
 //You can skip next await action using CO_SKIP_AWAIT
 //It can not skip CO_AWAIT_RETURN.
+
+#define CO_BREAK CO_SKIP_AWAIT
+
 #define CO_SKIP_AWAIT CO_GOTO_NEXT_STATE
 
 #define CO_GOTO_NEXT_STATE goto ____action_end;
@@ -453,12 +456,17 @@ public: \
     
 #define CO_YIELD_IF(bool_exp) CO_AWAIT_UNKNOWN_IF(bool_exp)
 
-#define CO_AWAIT_UNKNOWN_AGAIN_IF(bool_exp) \
+
+    
+//比较厌烦上面这种挨个加if的形式对吧，给一个通用的条件行为式。
+#define CO_OP_IF(bool_exp, op, ...) \
     if(!(bool_exp)){CO_GOTO_NEXT_STATE; } \
-    CO_AWAIT_UNKNOWN_AGAIN()
+    op(__VA_ARGS__)
+    
+#define CO_AWAIT_UNKNOWN_AGAIN_IF(bool_exp) CO_OP_IF(bool_exp, CO_AWAIT_UNKNOWN_AGAIN)
 
-#define CO_YIELD_AGAIN_IF(bool_exp) CO_AWAIT_UNKNOWN_AGAIN_IF(bool_exp)
-
+#define CO_YIELD_AGAIN_IF(bool_exp) CO_OP_IF(bool_exp, CO_YIELD_AGAIN)
+    
 //Implement
 #define CO_AWAIT_MULTI_IMPL(sub_cort) {\
     CO_AWAIT_MULTI_IMPL_IMPL(this, sub_cort) \
@@ -468,7 +476,7 @@ public: \
     cort_proto *__the_sub_cort = (sub_cort)->cort_start(); \
     if(__the_sub_cort != 0){ \
         __the_sub_cort->set_parent(this_ptr); \
-        ++current_wait_count; \
+        ++__current_wait_count; \
     }\
 }
 
@@ -500,17 +508,128 @@ public: \
    //}
 };//end of cort_example definition
 
+//Following is a full example.
+
+struct cort_wait_n : public cort_proto{
+    void init_resume_any(size_t wait_count, size_t n){
+        data10.rest_reference_count = wait_count - n;
+        data1.wait_count = n;
+    }
+    cort_proto* on_finish(){
+        delete this;
+        return this; //get_parent()->resume() is called mannually so we should not return 0.
+    }
+    
+    CO_DECL(cort_wait_n)
+    cort_proto* start(){
+        CO_BEGIN
+            CO_YIELD();
+            //now n waited coroutines finished so we resume our parent.
+            cort_proto* parent = get_parent();
+            if(parent != 0){
+                parent->resume();  
+            }
+            else{
+                CO_RETURN;
+            }
+            data1.wait_count = data10.rest_reference_count;
+            CO_YIELD_IF(data1.wait_count != 0);
+            //now rest waited coroutines finished so we can delete this.
+        CO_END
+    }
+};
+
+#define CO_AWAIT_ANY_IMPL_IMPL(sub_cort) {\
+    cort_proto *__the_sub_cort = (sub_cort)->cort_start(); \
+    if(__the_sub_cort != 0){ \
+        __the_sub_cort->set_parent(__wait_any_cort); \
+        ++__current_waited_count; \
+    }\
+    else if(++__current_finished_count == __max_count){ \
+        if(__current_waited_count != 0){ \
+            __wait_any_cort->set_wait_count(__current_waited_count); \
+            __wait_any_cort->start(); \
+        } \
+        else{ \
+            delete __wait_any_cort; \
+        } \
+        break; \
+    } \
+}
+
+//等待许多子协程中的任意n个的返回
+#define CO_AWAIT_ANY_N(n, ...) do{ \
+        size_t __current_finished_count = 0; \
+        size_t __current_waited_count = 0; \
+        const size_t __max_count = (size_t)(n); \
+        cort_wait_n *__wait_any_cort = new cort_wait_n(); \
+        CO_FOR_EACH(CO_AWAIT_ANY_IMPL_IMPL, __VA_ARGS__) \
+        __wait_any_cort->init_resume_any(__current_waited_count,  __max_count - __current_finished_count); \
+        __wait_any_cort->start(); \
+        __wait_any_cort->set_parent(this); \
+        this->set_wait_count(1); \
+        this->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
+        return this; \
+    }while(false);\
+    CO_NEXT_STATE
+    
+//等待协程区间中的任意n个的返回
+#define CO_AWAIT_RANGE_ANY_N(n, sub_cort_begin, sub_cort_end) do{ \
+        cort_proto *__wait_result_cort = cort_wait_range_any(this, sub_cort_begin, sub_cort_end, n); \
+        if(__wait_result_cort != 0){ \
+            __wait_result_cort->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
+            return __wait_result_cort; \
+        } \
+    }while(false);\
+    CO_NEXT_STATE
+    
+//等待许多子协程中的任意1个的返回
+#define CO_AWAIT_ANY(...) CO_AWAIT_ANY_N(1, __VA_ARGS__)
+
+//等待协程区间中的任意1个的返回
+#define CO_AWAIT_RANGE_ANY(sub_cort_begin, sub_cort_end) CO_AWAIT_RANGE_ANY_N(1, sub_cort_begin, sub_cort_end) 
+
 #include <iterator>
 template <typename T>
 size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_forward_iterator){
-    size_t current_wait_count = 0;
+    size_t __current_wait_count = 0;
     while(begin_forward_iterator != end_forward_iterator){
         typename std::iterator_traits<T>::value_type tmp_cort_new = (*begin_forward_iterator); 
         CO_AWAIT_MULTI_IMPL_IMPL(this_ptr, tmp_cort_new) 
         ++begin_forward_iterator;
     }
-    this_ptr->set_wait_count(current_wait_count);
-    return current_wait_count;
+    this_ptr->set_wait_count(__current_wait_count);
+    return __current_wait_count;
+}
+
+template<typename T>
+cort_proto* cort_wait_range_any(cort_proto* this_ptr, T begin_forward_iterator, T end_forward_iterator, size_t __max_count){
+    size_t current_finished_count = 0; 
+    size_t waited_count = 0; 
+    cort_wait_n *wait_any_cort = new cort_wait_n();
+    for(;begin_forward_iterator != end_forward_iterator;++begin_forward_iterator){
+        typename std::iterator_traits<T>::value_type tmp_cort_new = (*begin_forward_iterator);       
+        cort_proto *__the_sub_cort = tmp_cort_new->cort_start(); 
+        if(__the_sub_cort != 0){ 
+            __the_sub_cort->set_parent(wait_any_cort); 
+            ++waited_count;
+        }
+        else if(++current_finished_count == __max_count){ 
+            if(waited_count != 0){
+                wait_any_cort->set_wait_count(waited_count);
+                wait_any_cort->start();
+            }
+            else{
+                delete wait_any_cort;
+            }
+            return 0;
+        }
+    }
+    wait_any_cort->set_wait_count(waited_count);
+    wait_any_cort->start();
+    wait_any_cort->set_parent(this_ptr);
+    this_ptr->set_wait_count(1);
+    return this_ptr;
 }
 
 template<typename T>
@@ -566,6 +685,30 @@ CO_NEXT_STATE
         return resume_self_await(); \
     } \
     return 0; \
+}while(false)
+    
+#define cort_then_impl(new_type, cort) cort->data10.cort_then_function = new_type::cort_start_static;
+    
+    //有时候你依然喜欢传统的 then或者when 这种完成回调功能。你可以使用cort_then来实现类似的语法。
+    //https://github.com/yuanzhubi/cort_proto/blob/e3c0aba65299331cdaa04f0dc500ecc8b2781b23/unit_test/cort_proto_test.cpp#L93
+    //struct cort_then_output: public fibonacci_cort{
+    //        CO_DECL(cort_then_output)
+    //        cort_proto* start(){
+    //            printf("intput:%d, output:%d! \n", n, result);
+    //            return 0;
+    //        }
+    //    };
+    //cort_then(cort_then_output, corts[0]); 
+    //CO_AWAIT(corts[0]);
+    //这里使用子类化的方法来实现完成级联，CO_AWAIT里面 fibonacci_cort类型的corts[0]执行完毕后会以cort_then_output 的方式来继续执行。
+    //注意他依然只能访问fibonacci_cort，而且不能增加成员变量或者定义或重写虚函数。
+    //cort_then的第一个参数是子类名字，第二个是需要执行then级联的协程地址，你也可以加上更多的协程地址作为cort_then的参数
+#define cort_then(new_type,...) CO_FOR_EACH_BINARY(cort_then_impl, new_type, __VA_ARGS__)
+    
+#define cort_then_range(new_type, cort_begin, cort_end) do{ \
+    for(cort_proto* it = cort_begin; it != cort_end; ++it){ \
+        cort_then_impl(new_type, it); \
+    } \
 }while(false)
         
 #endif

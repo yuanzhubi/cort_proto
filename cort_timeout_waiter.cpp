@@ -458,6 +458,11 @@ cort_timeout_waiter::cort_timeout_waiter(){
     ref_count = 0;
 }
 
+cort_timeout_waiter::cort_timeout_waiter(time_ms_t timeout_ms){
+    that = 0;
+    ref_count = 0;
+    set_timeout(timeout_ms);
+}
 cort_timeout_waiter::~cort_timeout_waiter(){
     if(that != 0 && eptimer != 0){
         eptimer->remove_timer(that);
@@ -480,6 +485,7 @@ cort_proto* cort_timeout_waiter::on_finish(){
     clear_timeout();
     return cort_proto::on_finish();
 }
+
 void cort_timeout_waiter::set_timeout(time_ms_t timeout_ms){
     clear_timeout();
     time_cost_ms = 0;

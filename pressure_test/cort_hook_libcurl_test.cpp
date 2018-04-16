@@ -20,7 +20,7 @@ unsigned int error_count_total = 0;
 unsigned int success_count_total = 0;
 unsigned int total_time_cost = 0;
 unsigned int cort_count = 0;
-struct print_result_cort: public cort_auto_delete{
+struct print_result_cort: public cort_auto{
     CO_DECL(print_result_cort)
     cort_proto* start(){
         CO_BEGIN
@@ -73,7 +73,7 @@ struct libcurl_cort : public cort_stackful_fds_waiter{
     }
 };
 
-struct send_cort : public cort_auto_delete{
+struct send_cort : public cort_auto{
     CO_DECL(send_cort)
     libcurl_cort cort_test0;
     
