@@ -21,12 +21,12 @@ public:
         if(waiter != 0){
             this->set_parent(0);
             ++data0.result_int;
-            waiter->decr_wait_count(1);
+            waiter->decr_wait_count(1, this);
         }
         else if(!recvers.empty()){
             waiter = (cort_proto*)recvers.pop_back();
             ++data0.result_int;
-            waiter->decr_wait_count(1);
+            waiter->decr_wait_count(1, this);
         }
     }
 
@@ -69,12 +69,12 @@ public:
         if(waiter != 0){
             this->set_parent(0);
             ++data0.result_int;
-            waiter->decr_wait_count(1);
+            waiter->decr_wait_count(1, this);
         }
         else if(!recvers.empty()){
             waiter = (cort_proto*)recvers.pop_back();
             ++data0.result_int;
-            waiter->decr_wait_count(1);
+            waiter->decr_wait_count(1, this);
         }
     }
 

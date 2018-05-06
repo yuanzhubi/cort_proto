@@ -65,6 +65,42 @@ extern "C"{
         return fd;
     }
     
+    int cort_hooked_dup(int fd){
+        int fd_result = dup(fd);
+        if(fd_result >= 0){
+            cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter; 
+            cort_hook_fd_info *fd_info; 
+            if(waiter && (fd_info = (waiter->find_fd_waiter(fd)))){ 
+                *waiter->wait_fd(fd_result) = *fd_info;
+            }
+        }
+        return fd_result;
+    }
+    
+    int cort_hooked_dup2(int fd, int newfd){
+        int fd_result = dup2(fd, newfd);
+        if(fd_result >= 0){
+            cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter; 
+            cort_hook_fd_info *fd_info; 
+            if(waiter && (fd_info = (waiter->find_fd_waiter(fd))) && (waiter->find_fd_waiter(fd_result) == 0)){ 
+                *waiter->wait_fd(fd_result) = *fd_info;
+            }
+        }
+        return fd_result;
+    }
+    
+     int cort_hooked_dup3(int fd, int newfd, int flags){
+        int fd_result = dup3(fd, newfd, flags);
+        if(fd_result >= 0){
+            cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter; 
+            cort_hook_fd_info *fd_info; 
+            if(waiter && (fd_info = (waiter->find_fd_waiter(fd))) && (waiter->find_fd_waiter(fd_result) == 0)){ 
+                *waiter->wait_fd(fd_result) = *fd_info;
+            }
+        }
+        return fd_result;
+    }
+    
     #define CO_IO_HOOK_TEMPLATE(io_operation, pollevent, whattimeout) \
     cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter; \
     cort_hook_fd_info *fd_info; \

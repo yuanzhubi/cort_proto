@@ -1,24 +1,29 @@
-#include <sys/time.h>
 #include <stdlib.h>
-#include <map>
 #include <stdio.h>
-#include <unistd.h>
-#include <sys/epoll.h>
 #include <stdint.h>
-#include <list>
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
+
+#include <sys/time.h>
+#include <unistd.h>
+#include <sys/epoll.h>
+#include <set>
+#include <map>
+#include <list>
+#include <vector>
+#include <algorithm>
+
 #include "cort_timeout_waiter.h"
 
 struct cort_timer;
 
 typedef cort_timeout_waiter::time_ms_t time_ms_t;
 static __thread int epfd = 0;
-static __thread bool eptimer_is_to_stop = false;
 static __thread cort_timer* eptimer = 0;
 
 static __thread uint32_t epollfd_total_count = 0;
+static __thread std::set<cort_timeout_waiter*> *stopped_timeout_waiters;
 
 struct timeout_list;
 
@@ -28,7 +33,7 @@ struct timeout_list;
 struct cort_timeout_waiter_data{
     cort_timeout_waiter* data;
     time_ms_t end_time;
-    timeout_list * host_list;
+    timeout_list* host_list;
     std::list<cort_timeout_waiter_data>::iterator pos;
 };
 
@@ -303,7 +308,6 @@ void cort_timer_destroy_later(){
         close(epfd);
         epfd = 0;
     }
-    eptimer_is_to_stop = true;
 }
 
 #if defined(CO_USE_RDTSC) 
@@ -373,9 +377,11 @@ int cort_get_poll_fd(){
     return epfd;
 }
 
+//执行一次epoll，阻塞超时不得超过until_ms-cort_timer_now_ms()
 int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
-    const static int max_wait_count = 4*1024;
-    struct epoll_event events[max_wait_count];                   
+    const int max_wait_count = 4*1024;
+    struct epoll_event events[max_wait_count];
+    
     do{
         int wait_time;
         if(until_ms == 0){
@@ -385,13 +391,11 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
         }else{
             wait_time = int(until_ms - current_ms);
         }
-        bool is_eptimer_empty = false;
-        if(eptimer == 0){
-            if(until_ms != 0){
-                return 0;
-            }
-            is_eptimer_empty = true;
+   
+        if(eptimer == 0 && until_ms != 0){
+            return 0;
         }
+        
         int nfds = epoll_wait(epfd, events, max_wait_count, wait_time);
         cort_timer_refresh_clock();
         if(nfds == 0){
@@ -400,10 +404,11 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
         if(nfds < 0){//EINTR?
             continue;
         }
+        std::set<cort_timeout_waiter*> *stopped_waiters = stopped_timeout_waiters;
         for(int i = 0; i < nfds; i++){
-            ((cort_fd_waiter*)events[i].data.ptr)->resume_on_poll(events[i].events);
-            if((!is_eptimer_empty) && (eptimer == 0)){ //The cort may resume_on_stop, or even delete themselves!!
-                return 0;
+            cort_fd_waiter* fd_waiter = (cort_fd_waiter*)events[i].data.ptr;
+            if(stopped_waiters == 0 || stopped_waiters->find(fd_waiter) == stopped_waiters->end()){
+                fd_waiter->resume_on_poll(events[i].events);
             }
         }
         if(nfds == max_wait_count){
@@ -414,6 +419,7 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
 }
 
 void cort_timer_loop(){
+    std::set<cort_timeout_waiter*> stopped_waiters;
     do{
         start_loop:
         while(true){
@@ -422,29 +428,42 @@ void cort_timer_loop(){
             }   
             
             for(cort_timeout_waiter_data* ptimer = eptimer->get_next_timer(); ptimer != 0; ptimer = eptimer->get_next_timer()){
+                if(stopped_timeout_waiters == 0){
+                    stopped_timeout_waiters = &stopped_waiters;
+                }else{
+                    stopped_waiters.clear();
+                }
+                
                 int result = cort_timer_poll(ptimer->end_time);
                 if(eptimer == 0){   //All the timer should stop work.
                     break;
                 }
                 
-                if(result < 0 ){ //Nothing can happend but timeout.
+                if(result < 0 && stopped_waiters.find(ptimer->data) == stopped_waiters.end()){ //Nothing can happend but timeout.
                     ptimer->data->resume_on_timeout();
                 }
                 if(eptimer == 0){   //All the timer should stop work.
                     break;
                 }
-            }   
+            }
             break;
         }
         
         //Waiting for the waited fd. Now we do not have the concept of timeout.
         while(epollfd_total_count != 0){
+            if(stopped_timeout_waiters == 0){
+                stopped_timeout_waiters = &stopped_waiters;
+            }else{
+                stopped_waiters.clear();
+            }
             cort_timer_poll(0);
-            if(eptimer != 0){
+            if(eptimer != 0){   //eptimer was recreated.
                 goto start_loop;
             }
         }
     }while(false);
+    stopped_waiters.clear();
+    stopped_timeout_waiters = 0;
 }
 
 uint32_t cort_timeout_waiter::get_time_past() const{
@@ -510,6 +529,10 @@ void cort_timeout_waiter::resume_on_timeout(){
 
 void cort_timeout_waiter::resume_on_stop(){ 
     time_cost_ms = stopped_masker;
+    if(stopped_timeout_waiters != 0){
+        stopped_timeout_waiters->insert(this);
+    }
+    this->clear_timeout();
     this->resume();
 }
 
@@ -520,6 +543,11 @@ cort_fd_waiter::~cort_fd_waiter(){
 void cort_fd_waiter::resume_on_poll(uint32_t poll_event){
     this->poll_result = poll_event;
     this->resume();
+}
+
+void cort_fd_waiter::resume_on_stop(){ 
+    close_cort_fd();
+    cort_timeout_waiter::resume_on_stop();
 }
 
 int cort_fd_waiter::set_poll_request(uint32_t arg_poll_request){

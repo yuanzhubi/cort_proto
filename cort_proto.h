@@ -76,9 +76,10 @@ struct cort_proto{
         this->data1.wait_count += wait_count;
     }
     //减少当前协程等待的子协程的个数，如果减到0了，会让当前协程从等待状态中resume.
-    void decr_wait_count(size_t wait_count){
+    void decr_wait_count(size_t wait_count, cort_proto* cort_callee){
         this->data1.wait_count -= wait_count;
         if(this->data1.wait_count == 0){
+            this->set_resumer(cort_callee);
             this->resume();
         }
     }
@@ -99,10 +100,8 @@ struct cort_proto{
     void resume() {
         //We save the cort_parent before run_function. So you can "delete this" in your subclass overloaded on_finish function after parent class on_finish function is called and return 0.
         cort_proto* cort_parent_save = cort_parent;
-        if((*(this->data0.run_function))(this) == 0 && 
-            cort_parent_save != 0 && 
-            (--(cort_parent_save->data1.wait_count)) == 0){
-            cort_parent_save->resume();
+        if((*(this->data0.run_function))(this) == 0 && cort_parent_save != 0 ){
+            cort_parent_save->decr_wait_count(1, this);
         }
     }
     
@@ -124,15 +123,22 @@ struct cort_proto{
         return data10.cort_then_function;
     }
     
+    cort_proto* get_resumer() const{
+        return data1.resumer_cort;
+    }
+    void set_resumer(cort_proto* arg){
+        data1.resumer_cort = arg;
+    }
 
 protected:
     union{
         run_type run_function;
-        void* result_ptr;                   //Useful to save coroutine result
+        cort_proto* result_ptr;                   //Useful to save coroutine result
         size_t result_int;                  //Useful to save coroutine result
     }data0;
     union{
         size_t wait_count;
+        cort_proto* resumer_cort;
         run_type leaf_cort_run_function;
         cort_proto* real_cort_parent;
     }data1;
@@ -273,7 +279,8 @@ struct cort_example : public cort_proto{
 public: \
     CO_DECL_PROTO(__VA_ARGS__) \
     static inline base_type* cort_start_static(cort_proto* this_ptr){return ((cort_type*)this_ptr)->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();}\
-    inline base_type* cort_start() { return this->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();/*coroutine function name is start for default*/}                      
+    inline base_type* cort_start() { return this->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();/*coroutine function name is start for default*/} \
+    inline base_type* cort_start(cort_proto* &echo_ptr) {echo_ptr = this; return this->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();} \
 
 //有可能你想说明当前类是一个协程，但是暂时还不想定义协程入口函数，想留待子类来定义协程入口函数，
 //那么请使用CO_DECL_PROTO来代替CO_DECL
@@ -511,9 +518,9 @@ public: \
 //Following is a full example.
 
 struct cort_wait_n : public cort_proto{
-    void init_resume_any(size_t wait_count, size_t n){
-        data10.rest_reference_count = wait_count - n;
-        data1.wait_count = n;
+    void init_resume_any(size_t total_wait_count, size_t first_wait_count){
+        data10.rest_reference_count = total_wait_count - first_wait_count;
+        set_wait_count(first_wait_count);
     }
     cort_proto* on_finish(){
         delete this;
@@ -527,9 +534,9 @@ struct cort_wait_n : public cort_proto{
             //now n waited coroutines finished so we resume our parent.
             cort_proto* parent = get_parent();
             if(parent != 0){
+                parent->set_resumer(this->get_resumer());
                 parent->resume();  
-            }
-            else{
+            }else{
                 CO_RETURN;
             }
             data1.wait_count = data10.rest_reference_count;
@@ -540,12 +547,14 @@ struct cort_wait_n : public cort_proto{
 };
 
 #define CO_AWAIT_ANY_IMPL_IMPL(sub_cort) {\
-    cort_proto *__the_sub_cort = (sub_cort)->cort_start(); \
+    cort_proto *__echo_cort; \
+    cort_proto *__the_sub_cort = (sub_cort)->cort_start(__echo_cort); \
     if(__the_sub_cort != 0){ \
         __the_sub_cort->set_parent(__wait_any_cort); \
         ++__current_waited_count; \
     }\
     else if(++__current_finished_count == __max_count){ \
+        this->set_resumer(__echo_cort); \
         if(__current_waited_count != 0){ \
             __wait_any_cort->set_wait_count(__current_waited_count); \
             __wait_any_cort->start(); \
@@ -567,7 +576,6 @@ struct cort_wait_n : public cort_proto{
         __wait_any_cort->init_resume_any(__current_waited_count,  __max_count - __current_finished_count); \
         __wait_any_cort->start(); \
         __wait_any_cort->set_parent(this); \
-        this->set_wait_count(1); \
         this->set_run_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::do_exec_static)); \
         return this; \
     }while(false);\
@@ -615,6 +623,7 @@ cort_proto* cort_wait_range_any(cort_proto* this_ptr, T begin_forward_iterator, 
             ++waited_count;
         }
         else if(++current_finished_count == __max_count){ 
+            this_ptr->set_resumer(tmp_cort_new);
             if(waited_count != 0){
                 wait_any_cort->set_wait_count(waited_count);
                 wait_any_cort->start();
@@ -625,10 +634,9 @@ cort_proto* cort_wait_range_any(cort_proto* this_ptr, T begin_forward_iterator, 
             return 0;
         }
     }
+    wait_any_cort->set_parent(this_ptr);
     wait_any_cort->set_wait_count(waited_count);
     wait_any_cort->start();
-    wait_any_cort->set_parent(this_ptr);
-    this_ptr->set_wait_count(1);
     return this_ptr;
 }
 

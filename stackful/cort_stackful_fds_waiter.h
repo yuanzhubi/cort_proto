@@ -17,7 +17,7 @@ struct cort_stackful_fds_waiter: public cort_fd_waiter, public cort_stackful{
     
     cort_hook_fd_info *fds_array;
     
-    void wait_fd(int fd){
+    cort_hook_fd_info* wait_fd(int fd){
         if(fds_array == 0){
             reserved_count = 1;
             fds_array = (cort_hook_fd_info*)malloc(sizeof(cort_hook_fd_info) * 6);
@@ -44,6 +44,7 @@ struct cort_stackful_fds_waiter: public cort_fd_waiter, public cort_stackful{
             fds_array[reserved_count].write_timeout = 0;
             ++reserved_count;
         }
+        return fds_array+reserved_count-1;
     }
     void remove_fd(int fd){
         uint16_t total_count = reserved_count;

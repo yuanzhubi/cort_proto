@@ -32,10 +32,8 @@ struct cort_timeout_waiter : public cort_proto{
     //已经超时，resume当前协程
     void resume_on_timeout();
     
-    //resume_on_stop should be called by the scheduler when
-    //you want to stop the scheduler, so you need to stop all the leaf coroutines(then they will resume their parents).
-    //So cort_timer_destroy can lead all the cort_timeout_waiter stop one bye one.
-    //时间堆已经被销毁，resume当前协程。
+    // cort_timer_destroy can lead all the cort_timeout_waiter with timeout greater than zero stopped one bye one.
+    //时间堆已经被销毁，resume当前协程。或者被手工结束
     void resume_on_stop();
     
 protected:    
@@ -191,6 +189,8 @@ public:
     //fd发生了关注的事件并resume
     void resume_on_poll(uint32_t poll_event);
     
+    void resume_on_stop();
+    
     //获取当前线程有多少个fd在被监视
     static uint32_t cort_waited_fd_count_thread();
 };
@@ -218,9 +218,6 @@ cort_timeout_waiter::time_ms_t cort_timer_now_ms();
 
 //获取当前线程epoll fd
 int cort_get_poll_fd();
-
-//执行一次epoll，阻塞超时不得超过until_ms-cort_timer_now_ms()
-int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms);
 
 
 //CO_SLEEP(timeout_ms) 可以让你当前协程睡timeout_ms毫秒
