@@ -14,22 +14,22 @@
 //   Remember, both methods require other to recycle its stack.
     
 #define CO_STACKFUL_DECL(...) \
-    CO_DECL_PROTO(__VA_ARGS__) \
     CO_DECL_STACKFUL_PROTO(__VA_ARGS__) \
     static cort_proto* cort_start_static(cort_proto* that){ \
         return ((cort_type*)that)->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))(); \
     }   \
-    inline cort_proto* cort_start() {before_stackful_start(); return stackful_start(this, &cort_start_static);} \
-
+    inline cort_proto* cort_start() {before_stackful_start(); \
+        set_run_function(&cort_resume_static); /*run_function 必须是cort_resume_static*/ \
+        return stackful_start(this, &cort_start_static);} \
+        //stackful_start 的函数返回很有可能是通过cort_stackful_switch的调用返回的。所以不能因为stackful_start实现中固定返回0就认为这里一定返回0。
+    
 #define CO_DECL_STACKFUL_PROTO(...) \
+     CO_DECL_PROTO(__VA_ARGS__) \
     typedef CO_EXPAND(CO_GET_1ST_ARG(__VA_ARGS__)) cort_stackful_type;  \
     static cort_proto* cort_resume_static(cort_proto* that){ \
         return ((cort_stackful_type*)that)->stackful_resume();  \
+        /*这里可能是通过stackless_resume返回的*/                           \
     }   \
-    cort_proto* stackless_resume(cort_proto* return_value) { \
-        set_run_function(&cort_resume_static); \
-        return cort_stackful::stackless_resume(return_value); \
-    }   
 
 extern "C"{
     cort_proto* cort_stackful_start(cort_proto* func_argument, void* src_sp_addr, size_t dest_sp_value, cort_proto::run_type func_address);
@@ -66,12 +66,18 @@ struct cort_stackful{
         return cort_stackful_switch(&cort_stackful_sp_addr, &cort_stackless_sp_addr, return_value);
     }
     cort_proto* stackful_resume(){
-        return cort_stackful_switch(&cort_stackless_sp_addr, &cort_stackful_sp_addr, 0);
+        return cort_stackful_switch(&cort_stackless_sp_addr, &cort_stackful_sp_addr, 0); //如果能从这里返回，显然有栈协程结束了, 返回0即可
+        //但是也可能通过stackless_resume进行返回
     }
     
-    inline void before_stackful_start(){}   //You can overload the function in your subclass.
-    inline void after_stackful_resume(){}   //You can overload the function in your subclass.
-    inline void before_stackless_resume(){} //You can overload the function in your subclass.
+    //即将启动有栈协程
+    inline void before_stackful_start(){}   //You can overload the function in your subclass. It runs in usual stack.
+    
+    //已经切换到回一个有栈协程（第一次启动时不会调用这个）
+    inline void after_stackful_resume(){}   //You can overload the function in your subclass. It runs in stackful-coroutine's own stack.
+    
+    //即将切换回一个无栈协程（注意此时有栈协程可能是结束了，也可能只是暂时想yield）
+    inline void before_stackless_resume(){} //You can overload the function in your subclass. It runs in stackful-coroutine's own stack.
     
     cort_stackful(uint32_t init_stack_size = default_stack_size){
         stack_base = 0;
