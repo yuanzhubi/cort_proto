@@ -39,17 +39,16 @@ extern "C"{
 template <typename T>
 void cort_stackful_await(T* stackful_and_stackless_cort){
     stackful_and_stackless_cort->before_stackless_resume(); 
-    stackful_and_stackless_cort->stackless_resume(stackful_and_stackless_cort);
+    stackful_and_stackless_cort->stackless_resume(stackful_and_stackless_cort); //通过stackful_resume返回
     stackful_and_stackless_cort->after_stackful_resume();
 }
 
 template <typename T, typename D>
 void cort_stackful_await(T* stackful_cort, D* stackless_cort){
     stackful_cort->before_stackless_resume(); 
-    stackful_cort->stackless_resume(stackless_cort);
+    stackful_cort->stackless_resume(stackless_cort); //通过stackful_resume返回
     stackful_cort->after_stackful_resume();
 }
-
 
 struct cort_stackful{ 
     static const uint32_t default_stack_size = 24*1024; 
@@ -112,6 +111,7 @@ struct cort_stackful{
             free(stack_base);
         }
     }
+    
 private:
     cort_stackful(const cort_stackful&);
 };                                                                  
