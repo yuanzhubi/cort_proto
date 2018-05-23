@@ -148,6 +148,7 @@ protected:
         size_t rest_reference_count;
         run_type cort_then_function;
     }data10;
+    enum{is_auto_delete = false}; 
 
 public: //Following members should be protected, however the subclass defined in a function can not access them @vc2008
     //on_finish 函数是一个非虚函数，每个协程在自己结束时都会（通过宏，所以不会损失类型信息而无需使用虚函数）调用它
@@ -179,6 +180,7 @@ protected:
 
 template<typename T>
 struct cort_auto_delete : public T{
+    enum{is_auto_delete = true}; 
     cort_proto* on_finish(){
         delete this;
         return 0;
@@ -187,11 +189,10 @@ struct cort_auto_delete : public T{
 
 typedef cort_auto_delete<cort_proto> cort_auto;
 
+
 #define CO_GET_1ST_ARG(x,...) x
 #define CO_GET_2ND_ARG(x,y,...) y
 #define CO_GET_3RD_ARG(x,y,z,...) z
- 
-#define CO_GET_NTH_ARG(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9, N, ...) N
 
 #define CO_FE_0(co_call, x, ...) co_call(x)
 #define CO_FE_1(co_call, x, ...) co_call(x) CO_FE_0(co_call, __VA_ARGS__)
@@ -232,8 +233,14 @@ typedef cort_auto_delete<cort_proto> cort_auto;
 
 #define CO_ECHO(x) x
 
+#define CO_GET_NTH_ARG(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9, N, ...) N
+
 #define CO_FOR_EACH(x, ...) \
     CO_EXPAND(CO_GET_NTH_ARG(__VA_ARGS__, CO_FE_9, CO_FE_8, CO_FE_7, CO_FE_6, CO_FE_5, CO_FE_4, CO_FE_3, CO_FE_2, CO_FE_1, CO_FE_0)(x, __VA_ARGS__))
+ 
+#define CO_GET_NTH_ARG_E(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N, ...) N
+#define CO_FOR_EACH_E(x, ...) \
+    CO_EXPAND(CO_GET_NTH_ARG_E(CO_FE_0, ##__VA_ARGS__, CO_FE_9, CO_FE_8, CO_FE_7, CO_FE_6, CO_FE_5, CO_FE_4, CO_FE_3, CO_FE_2, CO_FE_1, CO_FE_0, CO_GET_EMPTY)(x, ##__VA_ARGS__))
 
 #define CO_COUNT_INC(x) +1
 #define CO_ARG_COUNT(...) (0+CO_FOR_EACH(CO_COUNT_INC, __VA_ARGS__))
@@ -640,30 +647,6 @@ cort_proto* cort_wait_range_any(cort_proto* this_ptr, T begin_forward_iterator, 
     return this_ptr;
 }
 
-template<typename T>
-T* cort_set_parent(T* son, cort_proto* parent = 0){
-    son->set_parent(parent);
-    return son;
-}
-
-//接下来介绍一些比较冷门的功能。
-
-//如果你直接调用了协程的一个协程入口成员函数cort->start()，那么本质上就是发起了一次异步调用加上可能的then回调而没有任何等待。
-//事实上cort->start() 是很常见的根协程启动方式。
-//但是如果cort已经被使用过一次了，注意他是否被合适的清理过以备第二次复用。可能某些协程子类使用了CO_EXIT来结束协程
-//导致on_finish函数并未被调用所以cort并未完成清理。
-//你也可以使用CO_ASYNC(cort, start)或者CO_ASYNC(cort) 这样的语法来在cort->start()执行前强制发起最基本的清理以防万一。
-//他可以在任何地方使用，甚至在协程函数体外部。 
-//CO_ASYNC will async call a coroutine.
-//First argument is the coroutine, the second is the enter function name(or your coroutine enter function name, if there exist only one argument).
-//The called coroutine should maintain its lifetime itself.
-//Usually you can CO_ASYNC a coroutine x only if x->is_finished() is true.
-//CO_ASYNC can be used anywhere. If the coroutine is not awaited before, it is equal to direct call "cort->cort_start()".
-#define CO_ASYNC(...) \
-    cort_set_parent(CO_EXPAND(CO_GET_1ST_ARG(__VA_ARGS__)))->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__, cort_start))()
-
-#define CO_GET_2ND_DEFAULT(x, ...) CO_GET_NTH_ARG(__VA_ARGS__, CO_FE_9, CO_FE_8, CO_FE_7, CO_FE_6, CO_FE_5, CO_FE_4, CO_FE_3, CO_FE_2, CO_GET_1ST_ARG, CO_GET_3RD_ARG)(x, __VA_ARGS__)
-
 
 //协程的自等待：如上所述，协程可以拥有多个入口协程函数，可以在函数A里等待this的B的完成（CO_SELF_AWAIT(this, B)）。
 //我们把这叫做自等待。抱歉为了性能只有满足以下条件的场景才允许使用自等待并且需要使用特殊的API。
@@ -718,5 +701,8 @@ CO_NEXT_STATE
         cort_then_impl(new_type, it); \
     } \
 }while(false)
-        
+
+//Supporing proto lambda grammar
+#include "cort_lambda.h"
+    
 #endif
