@@ -84,7 +84,7 @@ struct cort_proto{
         }
     }
         
-    //我们让this协程等待另外一个协程sub_cort
+    //我们让this协程等待另外一个未启动的协程sub_cort
     template<typename T>
     cort_proto* await(T* sub_cort){
         cort_proto* __the_sub_cort = sub_cort->cort_start();
@@ -94,6 +94,14 @@ struct cort_proto{
             return __the_sub_cort; 
         }
         return 0;
+    }
+    
+    //我们让this协程等待另外一个启动但没有执行完的协程sub_cort
+    void until(cort_proto* sub_cort){
+        if(sub_cort != 0){
+            sub_cort->set_parent(this); 
+            this->incr_wait_count(1);
+        }
     }
     
     //当前协程等待的所有子协程完毕，就会执行run_function来resume。如果执行完毕则会检查父协程是否可以resume。
@@ -147,6 +155,7 @@ protected:
     union{
         size_t rest_reference_count;
         run_type cort_then_function;
+        void* pdata;
     }data10;
     enum{is_auto_delete = false}; 
 
@@ -678,7 +687,7 @@ CO_NEXT_STATE
     return 0; \
 }while(false)
     
-#define cort_then_impl(new_type, cort) cort->data10.cort_then_function = new_type::cort_start_static;
+#define cort_then_impl(new_type, cort) cort->then(new_type::cort_start_static);
     
     //有时候你依然喜欢传统的 then或者when 这种完成回调功能。你可以使用cort_then来实现类似的语法。
     //https://github.com/yuanzhubi/cort_proto/blob/e3c0aba65299331cdaa04f0dc500ecc8b2781b23/unit_test/cort_proto_test.cpp#L93

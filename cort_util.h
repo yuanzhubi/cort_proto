@@ -38,12 +38,10 @@ public:
     }
     
     void push_back(const T& arg){
-        if(the_size < the_capacity){
-            ptr[the_size++] = arg;
-        }else{
+        if(the_size == the_capacity){
             ptr = (T*)realloc(ptr, sizeof(T)*(the_capacity *= 2));
-            ptr[the_size++] = arg;
-        }
+        }   
+        ptr[the_size++] = arg;
     }
     
     T& back() const{
