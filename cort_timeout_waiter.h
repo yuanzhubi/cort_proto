@@ -36,20 +36,25 @@ struct cort_timeout_waiter : public cort_proto{
     //时间堆已经被销毁，resume当前协程。或者被手工结束
     void resume_on_stop();
     
-protected:    
+private:    
     cort_timeout_waiter(const cort_timeout_waiter&);
+ 
+protected: 
     const static time_cost_ms_t timeout_masker = (((time_cost_ms_t)1)<<(sizeof(time_cost_ms_t)*8 - 1));
     const static time_cost_ms_t stopped_masker = (((time_cost_ms_t)1)<<(sizeof(time_cost_ms_t)*8 - 2));
     const static time_cost_ms_t normal_masker = timeout_masker | stopped_masker;
     
+
+public:
     //pimpl mode
     cort_timeout_waiter_data* that;
+    cort_timeout_waiter **ref_data;
     
     //start timestamp
     time_ms_t start_time_ms;
     //time cost when on_finished is called.
     time_cost_ms_t time_cost_ms;
-public:
+    
     uint32_t ref_count;
     uint32_t get_time_cost() const {
         return (time_cost_ms & (~normal_masker));
@@ -135,7 +140,7 @@ struct cort_timeout : public cort_timeout_waiter{
 //3. 时间堆被销毁了（resume_on_stop）
 //如同cort_timeout_waiter一样，他也应该只能是一个叶子协程。
 //This should be a leaf coroutine. It can only resumed by outer controler.
-//Because when your fd is ready, you have to react before next poll.
+//Because when your fd is ready, it must resume before next poll.
 struct cort_fd_waiter : public cort_timeout_waiter{
     int cort_fd;
     uint32_t poll_request;
