@@ -67,7 +67,7 @@ struct send_cort : public cort_auto{
     cort_tcp_request_response cort_test0;
     
     static recv_buffer_ctrl::recv_buffer_size_t recv_check_function(recv_buffer_ctrl* arg, cort_tcp_ctrler* p){
-        int32_t size = p->get_recv_buffer_size();
+        int32_t size = p->get_recved_size();
         char* buf = p->get_recv_buffer();
         if(size == 0){
             return 0;
