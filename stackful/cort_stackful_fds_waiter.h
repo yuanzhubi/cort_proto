@@ -1,6 +1,6 @@
 #ifndef CORT_STACKFUL_FDS_WAITER_H_
 #define CORT_STACKFUL_FDS_WAITER_H_
-#include "../cort_timeout_waiter.h"
+#include "../time/cort_timeout_waiter.h"
 #include "cort_stackful.h"
 
 struct cort_hook_fd_info{
@@ -8,6 +8,8 @@ struct cort_hook_fd_info{
     int fd;
     uint32_t read_timeout;
     uint32_t write_timeout;
+    uint32_t other_info;
+    const static uint32_t is_non_block_tag = 1;
 };
 struct cort_stackful_fds_waiter: public cort_fd_waiter, public cort_stackful{ 
     CO_DECL_STACKFUL_PROTO(cort_stackful_fds_waiter)
@@ -24,6 +26,7 @@ struct cort_stackful_fds_waiter: public cort_fd_waiter, public cort_stackful{
             fds_array[0].fd = fd;
             fds_array[0].read_timeout = 0;
             fds_array[0].write_timeout = 0;
+            fds_array[0].other_info = 0;
             fds_array[1].fd = 0;
             fds_array[2].fd = 0;
             fds_array[3].fd = 0;
@@ -42,6 +45,7 @@ struct cort_stackful_fds_waiter: public cort_fd_waiter, public cort_stackful{
             fds_array[reserved_count].fd = fd;
             fds_array[reserved_count].read_timeout = 0;
             fds_array[reserved_count].write_timeout = 0;
+            fds_array[reserved_count].other_info = 0;
             ++reserved_count;
         }
         return fds_array+reserved_count-1;
@@ -98,15 +102,19 @@ extern "C"{
     
     extern int cort_hooked_connect(int fd, const struct sockaddr *addr, socklen_t addrlen);
     extern int cort_hooked_accept(int fd, struct sockaddr *addr, socklen_t *addrlen);
+    extern int cort_hooked_accept4(int fd, struct sockaddr *addr, socklen_t *addrlen, int flags);     
+
     
-    
-    extern void cort_hooked_usleep(int usec);
+    extern int cort_hooked_usleep(int usec);
     extern int cort_hooked_epoll_wait(int fd, struct epoll_event *events, int maxevents, int timeout);
     extern int cort_hooked_poll(struct pollfd *fds, nfds_t nfds, int timeout);
     extern int cort_hooked_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
     
     extern int cort_hooked_close(int fd);
     extern int cort_hooked_setsockopt(int fd, int level, int optname, struct timeval *optval, socklen_t optlen);
+    
+    extern int cort_hooked_ioctl(int fd, unsigned long cmd, ...);
+    extern int cort_hooked_fcntl(int fd, int cmd, ...);
 }
 
 

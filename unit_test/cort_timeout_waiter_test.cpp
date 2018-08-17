@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/epoll.h>
-#include "../cort_timeout_waiter.h"
+#include "../time/cort_timeout_waiter.h"
 //We create a stdio echo test. We add some strange cases for invalid order of cort_timer_init(), cort_timer_loop(), cort_timer_destroy().
 int main(int argc, char* argv[])
 {

@@ -2,9 +2,9 @@
 #define CORT_TIME_LIMITED_H_
 
 #include <stdint.h>
-#include "cort_proto.h"
+#include "../cort_proto.h"
 
-#if defined(__x86_64__) || defined(__i386__)
+#if (defined(__x86_64__) || defined(__i386__)) && defined(__linux__)
 #define CO_USE_RDTSC //using rdtsc to get clock
 
 #endif
@@ -46,6 +46,7 @@ protected:
     
 
 public:
+    const static time_ms_t no_time_out = (time_ms_t)(-1);
     //pimpl mode
     cort_timeout_waiter_data* that;
     cort_timeout_waiter **ref_data;
@@ -60,15 +61,15 @@ public:
         return (time_cost_ms & (~normal_masker));
     }
     
-    inline bool is_timeout_or_stopped() const{
+    bool is_timeout_or_stopped() const{
         return (time_cost_ms & normal_masker) != 0;
     }
     
-    inline bool is_timeout() const{
+    bool is_timeout() const{
         return (time_cost_ms & timeout_masker) != 0;
     }
     
-    inline bool is_stopped() const{
+    bool is_stopped() const{
         return (time_cost_ms & stopped_masker) != 0;
     }
     
@@ -95,6 +96,7 @@ public:
     }
     
     //获取最终超时的毫秒时间戳
+    //return no_time_out if timeout is not set.
     time_ms_t get_timeout_time() const;
     
     //获取当前协程已经自设置超时时间后运行了多久了
@@ -215,11 +217,12 @@ void cort_timer_destroy();
 
 //1,2,3 steps can be called in every thread.
 
-//毫秒时钟默认只在每个epoll之后才刷新，你可以用cort_timer_refresh_clock手工重置
-cort_timeout_waiter::time_ms_t cort_timer_refresh_clock();
 
 //当前的毫秒时间戳
 cort_timeout_waiter::time_ms_t cort_timer_now_ms();
+
+//毫秒时钟默认只在每个epoll之后才刷新，你可以用cort_timer_now_ms_refresh手工重置
+cort_timeout_waiter::time_ms_t cort_timer_now_ms_refresh();
 
 //获取当前线程epoll fd
 int cort_get_poll_fd();
@@ -247,130 +250,71 @@ protected:
     }
 };
 
-//cort_repeater 用来每秒重复创建N个T类型的协程并执行之。适合执行定时任务，压测等。N需要大于1e-3.
+//cort_repeater 用来每秒重复创建N个T类型的协程并执行之。适合执行定时任务，压测等。
 template<typename T>
 struct cort_repeater : public cort_timeout_waiter{
     CO_DECL(cort_repeater)
+    cort_repeater(double count = 1.0){
+        set_repeat_per_second(count);
+    }
     void set_repeat_per_second(double count){
         req_count = count;
-        if(count > 100){
-            unsigned int intcount = (unsigned int)count;
-            interval_count = intcount / 100;
-            first_interval_count = intcount % 100;
-            type = 0;
+        if(req_count <= 10.0){
+            interval = (cort_timeout_waiter::time_ms_t)(1000/req_count);
+            req_per_interval = 1;
+        }else if(req_count <= 100.0){
+            interval = 100;
+            req_per_interval = (req_count/10);
+        }else{
+            interval = 10;
+            req_per_interval = (req_count/100);
         }
-        else if(count > 1.0){
-            unsigned int intcount = (unsigned int)count;
-            interval =  1000 / intcount;
-            first_interval = 1000 % intcount;
-            interval_count = intcount;
-            type = 1;
-        }
-        else  if(count > 1e-3){
-            unsigned int intcount = (unsigned int)(count*1000);
-            interval =  1000 * 1000 / intcount ;
-            first_interval = 1000 * 1000 % intcount;
-            interval_count = intcount;
-            type = 1000;
-        }
-        index = 0;
-        real_cort_count = 0;
+        counter = 0;
     }
     void stop(){
         clear_timeout();
-        real_cort_count = 0;
-        interval_count = 0;
-        first_interval_count = 0;
-        
-        interval = 0;
-        first_interval = 0;
-        
-        index = 0;
-        type = 65535;
     }
+    
+    static const unsigned int reset_times = 9;
     cort_proto* start(){
-        last_time = cort_timer_now_ms();
-        start_time = 0;
+        counter = 0;
         CO_BEGIN
-            if(!this->is_stopped() && type != 65535){
-                switch(type){
-                    case 0:{
-                        this->set_timeout(10);
-                    }
-                    break;
-                    case 1:{
-                        unsigned int real_interval = ((index < first_interval)?(interval+1):interval);
-                        this->set_timeout(real_interval);
-                    }
-                    break;
-                    case 1000:{
-                        unsigned int real_interval = ((index < first_interval)?(interval+1000):interval);
-                        this->set_timeout(real_interval);
-                    }
-                    default:
-                    break;
-                }
-                        
-                unsigned int now_time = (unsigned int)cort_timer_now_ms();
-                if(index == 0 && type <= 1){
-                    if(start_time != 0){ //We may be delayed and we need to fix.
-                        now_time = (unsigned int)cort_timer_refresh_clock();
-                        int fix_count = (int)(((now_time - start_time) / 1000.0) * req_count ) - real_cort_count; 
-                        while(fix_count-- > 0){
-                            (new T())->cort_start();
+            if(!this->is_stopped()){
+                set_timeout(interval);               
+                if(req_count > 1.0){    
+                    unsigned int this_time_count;
+                    if(counter == 0){
+                        start_time = cort_timer_now_ms();
+                        counter = 1;
+                        this_time_count = (unsigned int)req_per_interval;
+                    }else{                       
+                        if(counter != reset_times){
+                            this_time_count = (unsigned int)req_per_interval;
+                            ++counter;
+                        }else{
+                            counter = 0;
+                            this_time_count = (unsigned int)((cort_timer_now_ms() - start_time + interval) * req_count / 1000.0 - ((unsigned int)req_per_interval) * reset_times);
                         }
                     }
-                    start_time = (unsigned int)cort_timer_refresh_clock(); 
-                    real_cort_count = 0;
-                }
-                switch(type){
-                    case 0:{                            
-                        if(now_time - last_time > 200){
-                            last_time = now_time;
-                            index = 0;
-                            break;//We faced some blocking operation. So we skip one time.
-                        }
-                        last_time = now_time;
-                        unsigned int real_count = ((index < first_interval_count)?(interval_count+1):interval_count);
-                        index = (index + 1)%100;
-                        for(unsigned int i = 0; i <real_count; ++i){
-                            (new T())->cort_start();
-                            ++real_cort_count;
-                        }
+                    while(this_time_count != 0){
+                        --this_time_count;
+                        (new T())->start();
                     }
-                    break;
-                    case 1:{                            
-                        index = (index + 1)%interval_count;
-                        last_time = now_time;
-                        (new T())->cort_start();
-                        ++real_cort_count;
-                    }
-                    break;
-                    case 1000:{                     
-                        (new T())->cort_start();
-                        ++real_cort_count;
-                        index = (index + 1)%interval_count;
-                    }
-                    break;
-                    default:
-                    break;
+                }else{
+                    (new T())->start();
                 }
                 CO_AGAIN;
             }
+            this->stop();
         CO_END
     }
     double req_count;
-    unsigned int real_cort_count;
-    unsigned int start_time; 
-    unsigned int last_time; 
-    unsigned int interval_count;
-    unsigned int first_interval_count;
     
-    unsigned int interval;
-    unsigned int first_interval;
-
-    unsigned short index;
-    unsigned short type;
+    cort_timeout_waiter::time_ms_t start_time; 
+    cort_timeout_waiter::time_ms_t interval;
+    
+    unsigned int counter; 
+    double req_per_interval;
 };
 
 //我们对cort_timeout_waiter或他们的子类封装一个COM式的引用计数智能指针

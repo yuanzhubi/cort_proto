@@ -12,7 +12,7 @@ int timeout = 300;
 int keepalive_timeout = 300;
 
 //const char *ip = "203.205.128.137";
-const char* ip = "103.7.30.118";
+const char* ip = "183.3.226.21";
 unsigned int speed = 100;
 std::string query = "http://";
 
@@ -66,7 +66,7 @@ struct libcurl_cort : public cort_stackful_fds_waiter{
                 }
                 curl_easy_cleanup(curl);
             }
-            cort_timeout_waiter::time_ms_t end_time = cort_timer_refresh_clock();
+            cort_timeout_waiter::time_ms_t end_time = cort_timer_now_ms_refresh();
             total_time_cost += end_time - begin_time;
             --cort_count;
         CO_END
@@ -115,7 +115,7 @@ struct stdio_switcher : public cort_fd_waiter{
 int main(int argc, char* argv[]){
     cort_timer_init();
     printf( "This will start a curl client test(The not hooked version can not elegant quit and is with poor performance). Press ctrl+d to stop. \n"
-            "arg1: ip, default: 103.7.30.118 \n"
+            "arg1: ip, default: 183.3.226.21 \n"
             "arg2: query per second, default: 100 \n"
     );
     if(argc > 1){
@@ -126,8 +126,8 @@ int main(int argc, char* argv[]){
         speed = (unsigned int)(atoi(argv[2]));
     }
     query += ip;
-    //query += "/pingd?dm=www.qq.com&url=/"; //http://pingfore.qq.com/pingd?dm=news.qq.com&url=/  300ms latency, 62bytes response, 300qps max
-    query += "/kvcollect";                   //http://btrace.qq.com/kvcollect                     300ms latency, 147bytes response, 300qps max
+    //query += "/pingd?dm=www.qq.com&url=/"; //http://pingfore.qq.com/pingd?dm=news.qq.com&url=/  300ms latency, 62bytes response, 
+    query += "/kvcollect";                   //http://btrace.qq.com/kvcollect                     300ms latency, 147bytes response
 #if !defined(UNIT_TEST)
     cort_repeater<send_cort> tester;
     tester.set_repeat_per_second(speed);

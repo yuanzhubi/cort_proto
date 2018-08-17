@@ -4,11 +4,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/epoll.h>
-#include "../cort_timeout_waiter.h"
-#include "../cort_future.h"
+#include "../time/cort_timeout_waiter.h"
+#include "../cort_shared_future.h"
 //We create a stdio echo test. We add some strange cases for invalid order of cort_timer_init(), cort_timer_loop(), cort_timer_destroy().
 
-cort_future future;
+cort_shared_future future;
 char buf[512]={0} ;
 int last_time_out_ms = 5000;
 
@@ -59,7 +59,7 @@ int main(int argc, char* argv[])
         CO_DECL(cort_echo)
         cort_proto* start(){
             CO_BEGIN
-               CO_AWAIT(&future);
+               CO_AWAIT(&future);      
                puts(buf);
             CO_END
         }

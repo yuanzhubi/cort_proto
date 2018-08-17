@@ -34,7 +34,7 @@ void cort_tcp_listener::stop_listen(){
 }
 
 void cort_tcp_listener::pause_accept(){
-	remove_poll_request();
+	set_poll_request(EPOLLOUT); //We do not remove the listen fd because it may lead to epoll fd does not wait anything.
 }
 
 void cort_tcp_listener::resume_accept(){
@@ -174,24 +174,14 @@ cort_proto* cort_tcp_listener::start(){
         if(thread_errno == 0){
             goto start_accept;
         }
-		if ((thread_errno == EAGAIN) || (thread_errno == EWOULDBLOCK) || (on_accept_error() == 0)){
+		if (thread_errno != EMFILE && thread_errno != ENFILE && thread_errno != ENOBUFS && thread_errno != ENOMEM ){
 			CO_AGAIN;
 		}
-		CO_SWITCH; //We never finish until we face real error, but we switch the control to on_accept_error.
-	CO_END
-}
-
-cort_proto* cort_tcp_listener::on_accept_error(){
-	CO_BEGIN
-		int thread_errno = errno;
-		if(thread_errno != EMFILE && thread_errno != ENFILE && thread_errno != ENOBUFS && thread_errno != ENOMEM ){
-			return 0;
-		}
-		pause_accept();
-		CO_SLEEP(500);
-		resume_accept();
-		start(); 
-		CO_SWITCH;	//We never finish until we face real error, but we switch the control back to start.
+        //We can not accept so we sleep 100ms
+        pause_accept();
+		CO_SLEEP(1);
+        resume_accept();
+        CO_PREV;  
 	CO_END
 }
 
@@ -217,7 +207,7 @@ static cort_proto* on_connection_keepalive_timeout_or_readable_server(cort_proto
 void cort_tcp_server_waiter::keep_alive(uint32_t keep_alive_time, uint32_t /* ip_arg */, uint16_t /* port_arg */, uint16_t /* type_key_arg */){
 	this->set_parent(0);
 	this->set_timeout(keep_alive_time);
-	this->set_run_function(on_connection_keepalive_timeout_or_readable_server);
+	this->set_callback_function(on_connection_keepalive_timeout_or_readable_server);
 	this->add_ref();
 	this->set_poll_request(EPOLLIN | EPOLLRDHUP);
 	this->clear_poll_result();

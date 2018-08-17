@@ -40,21 +40,29 @@ struct fibonacci_cort : public cort_proto{
     fibonacci_cort *corts[2];
     int n;
     int result;
-    
+
     //You can define anything.
     ~fibonacci_cort(){
     }
-    fibonacci_cort(int input): n(input){
+    fibonacci_cort(int input ): n(input){
     }
 
     CO_DECL(fibonacci_cort)
     
     //This is the coroutine entrance.
     cort_proto* start();
+    
+    cort_proto* test(int){return 0;}
 };
 
 cort_proto* fibonacci_cort::start(){
     CO_BEGIN 
+        struct cort_tester :public cort_proto {
+            CO_DECL(cort_tester)
+            cort_proto* start() {
+                return 0;
+            }
+        }tester;
         if(++the_clock == 0){   //Oh you are not enabled to work now.
             push_work(this);
             CO_AGAIN;
@@ -69,7 +77,7 @@ cort_proto* fibonacci_cort::start(){
         //They may cost much time so we should wait their result.
         
         if(false){
-            //You can skip await using CO_SKIP_AWAIT
+            //You can skip next await using CO_SKIP_AWAIT
             CO_SKIP_AWAIT;
         }
         //CO_AWAIT_ALL(corts[0], corts[1]); //You can place no more than ten corts for CO_AWAIT_ALL.
@@ -90,13 +98,16 @@ cort_proto* fibonacci_cort::start(){
             }
         };
         
-        cort_then(cort_then_output, corts[0]); //When corts[0] finished, run as cort_then_output.
-        cort_then(cort_then_output, corts[1]);
+        CO_THEN(cort_then_output, corts[0]); //When corts[0] finished, run as cort_then_output.
+        CO_THEN(cort_then_output, corts[1]);
+        CO_THEN_LB(this->corts[1], (return 0;));
+        CO_THEN_LB(this->corts[1], (printf("intput:%d, output:%d! \n", n, result);));
         //Or you can simply
-        //cort_then(cort_then_output, corts[0], corts[1]);
+        //CO_THEN(cort_then_output, corts[0], corts[1]);
         //Or if c++11 supported
         //corts[0]->then<cort_then_output>(); corts[1]->then<cort_then_output>();
-        CO_AWAIT_ALL(corts[0], corts[1])
+
+        CO_AWAIT_ALL(corts[0], corts[1], &tester, &tester)
         //CO_AWAIT_RANGE_IF(true, corts, corts+2);
         //CO_AWAIT_IF(true, corts[0]); 
         //CO_AWAIT_IF(true, corts[1]);    
@@ -108,6 +119,10 @@ cort_proto* fibonacci_cort::start(){
         result = corts[0]->result + corts[1]->result;
         delete corts[0];
         delete corts[1];
+        
+        CO_ASYNC_LB(cort_proto, (printf("test:%d\n", 0);));       
+        CO_AWAIT_LB(cort_proto, (printf("test:%d\n", result);), result);
+        CO_AWAIT_LB(cort_proto, (printf("test double:%d, %d\n", result, n);), result,n);
     CO_END
 }
 
@@ -123,7 +138,7 @@ int main(int argc, char* argv[]){
     while(pop_execute_work()){ //Generator mode? Just a toy.
         //sleep(1);
     }
-    printf("%d\n", main_task.result);
+    printf("result is: %d\n", main_task.result);
     return 0;
 }
 #endif

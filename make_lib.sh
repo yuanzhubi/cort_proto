@@ -1,11 +1,11 @@
 #!/bin/bash
 CXX=g++
-CXXFLAGS="-g -O2 -march=native -pipe -fomit-frame-pointer -Wno-deprecated -DNDEBUG"
+CXXFLAGS="-g -O2 -march=native -pipe -fomit-frame-pointer -Wno-deprecated -DNDEBUG -Wall"
 LDFLAGS=
 
 #You can remove the module you do not need, even make MODULE_LIST empty
-MODULE_LIST=(net stackful)
-compile_files="*.cpp"
+MODULE_LIST=(net stackful time)
+compile_files=""
 for module_name in ${MODULE_LIST[@]}
 do	
     compile_files="$compile_files $module_name/*.cpp"	 

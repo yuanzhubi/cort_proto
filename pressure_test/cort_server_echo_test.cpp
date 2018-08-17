@@ -24,7 +24,7 @@ struct print_result_cort: public cort_auto{
 struct cort_tcp_echo_server : cort_tcp_ctrler{
     CO_DECL(cort_tcp_echo_server)
     static recv_buffer_ctrl::recv_buffer_size_t recv_check_function(recv_buffer_ctrl* arg, cort_tcp_ctrler* p){
-        uint32_t size = p->get_recv_buffer_size();
+        uint32_t size = p->get_recved_size();
         char* buf = p->get_recv_buffer();
         if(size == 0){
             return 0;
@@ -64,7 +64,7 @@ struct cort_tcp_echo_server : cort_tcp_ctrler{
             if(get_errno() != 0){ //Remote closes the connection? Or remote sends data that break the "ping-pong" rule? Or timeout.
                 CO_RETURN;  
             }
-            set_send_buffer(get_recv_buffer(), get_recv_buffer_size());
+            set_send_buffer(get_recv_buffer(), get_recved_size());
             CO_AWAIT(lock_send());
             if(get_errno() != 0){
                 CO_RETURN;  
@@ -135,7 +135,7 @@ int main(int argc, char* argv[]){
     }
     switcher.start();
     cort_repeater<print_result_cort> logger;
-    logger.set_repeat_per_second(1);    //log performance 1 time per second
+    logger.set_repeat_per_second(0.1);    //log performance 1 time per 10s
     logger.start();
     cort_timer_loop();
     cort_timer_destroy();

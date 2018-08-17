@@ -5,7 +5,7 @@
 #include <assert.h>
 #include <string.h>
 #include <sys/uio.h>
-#include "../cort_timeout_waiter.h"
+#include "../time/cort_timeout_waiter.h"
 
 struct cort_tcp_connection_waiter;
 struct cort_tcp_connection_waiter_client;
@@ -20,9 +20,14 @@ namespace cort_socket_config{	//When the following config is changed, you have t
 namespace cort_socket_error_codes{
 	template<int N, uint8_t code>
 	struct error_str;
+    
+    const static uint8_t SOCKET_OK = 0; 
 	template<int N>
 	struct error_str<N, 0>{
-		const char* info[256];
+		const char* info[256];       
+        error_str(){ 
+			error_str<N, 0>::info[0] = "SOCKET_OK"; 
+		} 
 	};
 	template<int N, uint8_t code>
 	struct error_str : public error_str<N, code - 1>{ 
@@ -38,7 +43,7 @@ namespace cort_socket_error_codes{
 	}
 	const char* error_info(uint8_t code);
 	
-	//1: socket create error
+    //1: socket create error
 	CO_DECL_CODES(SOCKET_CREATE_ERROR, 1);
 	
 	//2: socket connect error
@@ -280,16 +285,16 @@ struct cort_tcp_connection_waiter : public cort_fd_waiter{
 	CO_DECL_PROTO(cort_tcp_connection_waiter)
 
 	//We assert the parent cort should only await this cort, and do not need other time information.
-	cort_proto* on_finish();
+	CO_AWAITABLE cort_proto* on_finish();
 	
 	//You can await this function.
-	cort_proto* try_connect();
+	CO_AWAITABLE cort_proto* try_connect();
 	
 	//You can await this function.
-	cort_proto* try_send();
+	CO_AWAITABLE cort_proto* try_send();
 	
 	//You can await this function.
-	cort_proto* try_recv();
+	CO_AWAITABLE cort_proto* try_recv();
 	
 	bool is_connected() const {
 		return get_cort_fd() > 0;
@@ -301,7 +306,7 @@ struct cort_tcp_connection_waiter : public cort_fd_waiter{
 	
 	void set_errno(uint8_t err);
 	
-	void close_connection(uint8_t err = 0);
+	void close_connection(uint8_t err = cort_socket_error_codes::SOCKET_OK);
 	
 	virtual void keep_alive(uint32_t keep_alive_time, uint32_t ip_arg, uint16_t port_arg, uint16_t type_key_arg) = 0;
 };
@@ -316,14 +321,6 @@ private:
 	typedef cort_proto parent_type;
 
 public:	
-//Common API
-	
-	//Both ip and port have to use network byte order!
-	void set_dest_addr(uint32_t ip, uint16_t port);
-	
-	//Port should use local order!
-	void set_dest_addr(const char* ip, uint16_t port);
-	
 	uint8_t get_errno() const {
 		return errnum;
 	}
@@ -334,16 +331,29 @@ public:
 	void set_timeout(uint32_t timeout_arg){
 		timeout = timeout_arg;
 	}
+
+public:	
+//Address API
 	
-	//type_key:ip:port will form the search key for the keep alive connection. So it can be your sub_class type_id or other application key.
+	//Both ip and port have to use network byte order!
+	void set_dest_addr(uint32_t ip, uint16_t port);
+	
+	//Port should use local order!
+	void set_dest_addr(const char* ip, uint16_t port);
+    
+    //type_key:ip:port will form the search key for the keep alive connection. So it can be your sub_class type_id or other application key.
 	void set_type_key(uint16_t type_key_arg){
 		type_key = type_key_arg;
 	}
+    
+protected:
+    //If you try_connect without set_dest_addr, get_addr will be awaited. The function can be awaited.
+    CO_AWAITABLE virtual cort_proto* get_addr(){return 0;}
 
-//Connect API
-
+public:
+//Connect API    
 	//You can await this function.
-	cort_proto* try_connect();
+	CO_AWAITABLE cort_proto* try_connect();
 
 	void set_keep_alive(uint32_t alive_ms){
 		keep_alive_ms = alive_ms;
@@ -354,9 +364,8 @@ public:
 //Send API
 public:
 	//You can await this function.
-	cort_proto* try_send();
-	
-	
+	CO_AWAITABLE cort_proto* try_send();
+		
 	bool is_send_finished() const{
 		return send_buffer.empty();
 	}
@@ -379,13 +388,13 @@ public:
 //Recv API
 public:
 	//You can await this function.
-	cort_proto* try_recv();
+	CO_AWAITABLE cort_proto* try_recv();
 	
 	char* get_recv_buffer() const{
 		return recv_buffer.recv_buffer;
 	}
 	
-	recv_buffer_ctrl::recv_buffer_size_t  get_recv_buffer_size() const {
+	recv_buffer_ctrl::recv_buffer_size_t get_recved_size() const {
 		return recv_buffer.recved_size;
 	}
 	
@@ -502,11 +511,6 @@ public:
 	
 protected:
 	cort_proto* on_finish();
-	virtual void on_connect_finish(){};
-	
-	virtual void on_send_finish(){};
-	
-	virtual void on_recv_finish(){};
 	
 	//You should call it after your couroutine on_finish because we may set_timeout for keepalive.
 	virtual void on_connection_inactive();

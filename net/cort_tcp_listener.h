@@ -65,12 +65,6 @@ public:
 	
 	cort_proto* start();
 	
-	//We provide a default policy when accepting faces socket create or socket buffer allocation error: 
-	//1. First, stop accept.
-	//2. Second, sleep 500ms.
-	//3. Try to accept again. If failed, goto 2.
-	virtual cort_proto* on_accept_error();
-	
 	virtual void on_accept(int accept_fd){} ;
 private:
 	void set_timeout(time_ms_t timeout_ms); //We disable user set_timeout. The cort should be never finish unless you call stop_listen or destruct it.

@@ -34,6 +34,7 @@ cort_tcp_ctrler::cort_tcp_ctrler(){
 	type_key = 0;
 	
 	errnum = 0;
+    setsockopt_arg.data = 0;
 }
 
 cort_tcp_ctrler::~cort_tcp_ctrler(){
@@ -143,7 +144,7 @@ static cort_proto* stop_poll_when_notification(cort_proto* arg){
 
 cort_proto* cort_tcp_connection_waiter::on_finish(){
 	clear_poll_result();
-	set_run_function(stop_poll_when_notification);
+	set_callback_function(stop_poll_when_notification);
 	if(get_parent() == 0){
 		this->release();
 	}		
@@ -153,7 +154,7 @@ cort_proto* cort_tcp_connection_waiter::on_finish(){
 			set_poll_request((~EPOLLOUT) & poll_req);
 		}
 	}
-    //You are not really finished! So do not call on_finish function of your super class to avoid clear_timeout and clear run_function.
+    //You are not really finished! So do not call on_finish function of your super class to avoid clear_timeout and clear callback_function.
     //return cort_fd_waiter::on_finish();
     return 0;
 }
@@ -169,7 +170,7 @@ void cort_tcp_connection_waiter_client::keep_alive(uint32_t keep_alive_ms, uint3
 	this->type_key = type_key;
 	this->add_ref();
 	this->set_timeout(keep_alive_ms);
-	this->set_run_function(on_connection_keepalive_timeout_or_readable);
+	this->set_callback_function(on_connection_keepalive_timeout_or_readable);
 	this->set_parent(0);
 	this->set_poll_request(EPOLLIN | EPOLLRDHUP);
 	if(connection_tcp_pool == 0){
@@ -618,7 +619,7 @@ size_t cort_tcp_connection_waiter_client::clear_keep_alive_connection(size_t cou
 			cort_tcp_connection_waiter_client* last = dq.back();				
 			dq.pop_back();
 			last->close_cort_fd();
-			last->set_run_function(release_when_notification);
+			last->set_callback_function(release_when_notification);
 			++result;
 		}
 		if(dq.empty()){
@@ -643,15 +644,15 @@ cort_proto* cort_tcp_request_response::start(){
 	CO_BEGIN
 		init_time_cost();
 		CO_AWAIT(lock_connect());
-		co_unlikely_if(get_errno() != 0){
+		if(get_errno() != 0){
 			CO_RETURN;	
 		}
 		CO_AWAIT(lock_send());
-		co_unlikely_if(get_errno() != 0){
+		if(get_errno() != 0){
 			CO_RETURN;	
 		}
 		CO_AWAIT(lock_recv());
-		co_unlikely_if(get_errno() != 0){
+		if(get_errno() != 0){
 			CO_RETURN;	
 		}
 		on_connection_inactive();

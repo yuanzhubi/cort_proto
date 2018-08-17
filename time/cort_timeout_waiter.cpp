@@ -140,9 +140,7 @@ struct cort_timer{
             return short_timer_search[timeout];
         }       
         timeout_list& data = long_timer_search[timeout];
-        if(data.timeout != timeout){
-            data.timeout = timeout;
-        }
+        data.timeout = timeout;
         return data;
     }
     
@@ -222,7 +220,10 @@ struct cort_timer{
     
     void remove_time_out(size_t pos){
         timeout_list* pos_data = timer_heap[pos];
-        co_unlikely_if(pos_data->data->empty()){
+        if(!pos_data->data->empty()){
+            time_ms_t my_time = pos_data->data->back().end_time;
+            down_update_heap(pos, my_time);
+        }else{
             --timer_size;
             if(timer_size != 0){
                 if(pos != timer_size){
@@ -233,14 +234,11 @@ struct cort_timer{
             }
             if(pos_data->timeout >= short_timer_list_size){
                 long_timer_search.erase(pos_data->timeout);
-            }
-            else{
+            }else{
                 pos_data->heap_pos = heap_npos;
             }
-            return;
         }
-        time_ms_t my_time = pos_data->data->back().end_time;
-        down_update_heap(pos, my_time);
+        
     }
     
     cort_timeout_waiter_data* add_timer(cort_timeout_waiter* timer, time_ms_t timeout){
@@ -281,7 +279,7 @@ int cort_timer_init(){
             return -1;
         }
     }    
-    cort_timer_refresh_clock();
+    cort_timer_now_ms_refresh();
     signal(SIGHUP,  SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
     signal(SIGTTOU, SIG_IGN);
@@ -362,7 +360,7 @@ static inline time_ms_t now_ms()
 
 static time_ms_t current_ms = now_ms();
 
-cort_timeout_waiter::time_ms_t cort_timer_refresh_clock(){
+cort_timeout_waiter::time_ms_t cort_timer_now_ms_refresh(){
     current_ms = now_ms();
     return current_ms;
 }
@@ -384,7 +382,7 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
         int wait_time;
         if(until_ms == 0){
             wait_time = 1*1000;
-        }else if(until_ms <= cort_timer_refresh_clock()){
+        }else if(until_ms <= cort_timer_now_ms_refresh()){
             return -1;
         }else{
             wait_time = int(until_ms - current_ms);
@@ -395,7 +393,7 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
         }
         
         int nfds = epoll_wait(epfd, events, max_wait_count, wait_time);
-        cort_timer_refresh_clock();
+        cort_timer_now_ms_refresh();
         if(nfds == 0){
             return -1;
         }
@@ -484,6 +482,9 @@ cort_timeout_waiter::~cort_timeout_waiter(){
 }
 
 time_ms_t cort_timeout_waiter::get_timeout_time() const {
+    if(that == 0){
+        return no_time_out;
+    }
     return that->end_time;
 }
 

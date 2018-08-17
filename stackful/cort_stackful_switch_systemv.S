@@ -5,7 +5,7 @@
 .type  cort_stackful_switch, @function
 .align 16
 cort_stackful_switch:
-/* from@RDI, to@RSI, return_result@RDX */
+/* src_sp_addr@rdi, dest_sp_addr@rsi, return_result@rdx */
 
     pushq %rbp
     pushq %rbx
@@ -25,8 +25,7 @@ cort_stackful_switch:
     popq  %rbp                                                                                                                   
     
     movq  %rdx, %rax
-    popq  %rcx
-    jmpq  *%rcx                                                                                                                             
+    retq                                                                                                                           
                                                                                                                                                                                                                                                        
 .size cort_stackful_switch,.-cort_stackful_switch 
 
@@ -36,7 +35,7 @@ cort_stackful_switch:
 .type  cort_stackful_start, @function
 .align 16
 cort_stackful_start:
-/* this@RDI, from_save_addr@RSI, to_value@RDX, start_func@RCX*/
+/*  cort@rdi, src_sp_addr@rsi, dest_sp_value@rdx, start_func@rcx*/
 
     pushq %rbp
     pushq %rbx
@@ -60,8 +59,7 @@ cort_stackful_start:
     popq  %rbp                                                                                                                   
     
     xorq  %rax, %rax
-    popq  %rcx
-    jmpq  *%rcx                                                                                                                                           
+    retq                                                                                                                                          
                                                                                                                             
 .size cort_stackful_start,.-cort_stackful_start 
 
@@ -92,8 +90,7 @@ cort_stackful_switch:
     popl  %ebx                                                                                                                   
     popl  %ebp 
     
-    popl  %ecx
-    jmpl  *%ecx                                                                                                                    
+    ret                                                                                                                  
                                                                                                                                  
 .size cort_stackful_switch,.-cort_stackful_switch 
 
@@ -128,8 +125,7 @@ cort_stackful_start:
     popl  %ebp 
     
     xorl  %eax, %eax
-    popl  %ecx
-    jmpl  *%ecx                                                                                                                    
+    ret                                                                                                                  
                                                                                                                                  
 .size cort_stackful_start,.-cort_stackful_start 
 

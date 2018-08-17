@@ -6,6 +6,7 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/uio.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -21,10 +22,7 @@
 #include <stdint.h>
 #include <signal.h>
 
-static __thread cort_stackful_fds_waiter* current_cort_stackful_fds_waiter = 0;
-
 cort_stackful_fds_waiter::cort_stackful_fds_waiter(){
-    reserved_count = 0;
     fds_array = 0;
 }
 
@@ -35,18 +33,18 @@ cort_stackful_fds_waiter::~cort_stackful_fds_waiter(){
 }
 
 void cort_stackful_fds_waiter::before_stackful_start(){
-    current_cort_stackful_fds_waiter = this;
+    set_current_thread_cort(this);
 }
 
 void cort_stackful_fds_waiter::after_stackful_resume(){
-    current_cort_stackful_fds_waiter = this;
+    set_current_thread_cort(this);
 }
 
 void cort_stackful_fds_waiter::before_stackless_resume(){
-    current_cort_stackful_fds_waiter = 0;
+    set_current_thread_cort(0);
 }
 
-static void set_non_block(int fd){  
+static inline void set_fd_non_block(int fd){  
     int flag = fcntl(fd, F_GETFL);
     int new_flag = flag | O_NONBLOCK;
     if(flag != new_flag){
@@ -56,22 +54,32 @@ static void set_non_block(int fd){
 
 extern "C"{
     int cort_hooked_socket(int domain, int type, int protocol){
-        int fd = socket(domain, type, protocol);
-        cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter;
-        if(waiter != 0 && fd > 0){
+        #if defined(__linux__)
+        int fd = socket(domain, type|SOCK_NONBLOCK , protocol);
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort());
+        if(waiter && fd > 0){
             waiter->wait_fd(fd);
-            set_non_block(fd);
         }
+        #else
+        int fd = socket(domain, type, protocol);
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort());
+        if(waiter && fd > 0){
+            waiter->wait_fd(fd);
+            set_fd_non_block(fd);
+        }
+        #endif
         return fd;
     }
     
     int cort_hooked_dup(int fd){
         int fd_result = dup(fd);
         if(fd_result >= 0){
-            cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter; 
+            cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort()); 
             cort_hook_fd_info *fd_info; 
             if(waiter && (fd_info = (waiter->find_fd_waiter(fd)))){ 
-                *waiter->wait_fd(fd_result) = *fd_info;
+                cort_hook_fd_info* info_n = waiter->wait_fd(fd_result);
+                *info_n = *fd_info;
+                info_n->fd = fd_result;
             }
         }
         return fd_result;
@@ -80,29 +88,83 @@ extern "C"{
     int cort_hooked_dup2(int fd, int newfd){
         int fd_result = dup2(fd, newfd);
         if(fd_result >= 0){
-            cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter; 
+            cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort()); 
             cort_hook_fd_info *fd_info; 
             if(waiter && (fd_info = (waiter->find_fd_waiter(fd))) && (waiter->find_fd_waiter(fd_result) == 0)){ 
-                *waiter->wait_fd(fd_result) = *fd_info;
+                cort_hook_fd_info* info_n = waiter->wait_fd(fd_result);
+                *info_n = *fd_info;
+                info_n->fd = fd_result;
             }
         }
         return fd_result;
     }
     
-     int cort_hooked_dup3(int fd, int newfd, int flags){
+    int cort_hooked_dup3(int fd, int newfd, int flags){
         int fd_result = dup3(fd, newfd, flags);
         if(fd_result >= 0){
-            cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter; 
+            cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort()); 
             cort_hook_fd_info *fd_info; 
             if(waiter && (fd_info = (waiter->find_fd_waiter(fd))) && (waiter->find_fd_waiter(fd_result) == 0)){ 
-                *waiter->wait_fd(fd_result) = *fd_info;
+                cort_hook_fd_info* info_n = waiter->wait_fd(fd_result);
+                *info_n = *fd_info;
+                info_n->fd = fd_result;
             }
         }
         return fd_result;
+    }
+    
+    int cort_hooked_ioctl(int fd, unsigned long cmd, ...)
+    {
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort()); 
+        cort_hook_fd_info *fd_info; 
+        
+        va_list argp;
+        va_start(argp, cmd);
+        void* arg = va_arg(argp, void*);
+        va_end(argp);
+    
+        if(waiter && (cmd == FIONBIO) && (fd_info = (waiter->find_fd_waiter(fd))) ){
+            int i = 1;
+            return ioctl(fd, cmd, &i);
+        }
+
+        return ioctl(fd, cmd, arg);
+    }
+
+    int cort_hooked_fcntl(int fd, int cmd, ...){
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort()); 
+        cort_hook_fd_info *fd_info; 
+        
+        va_list argp;
+        va_start(argp, cmd);
+        if(waiter && (cmd == F_DUPFD || cmd == F_DUPFD_CLOEXEC || cmd == F_SETFL) && (fd_info = (waiter->find_fd_waiter(fd))) ){
+            if(cmd == F_SETFL){
+                int flags = va_arg(argp, int);
+                va_end(argp);
+                flags |= O_NONBLOCK;
+                return fcntl(fd, cmd, flags);
+            }
+            else{
+                int new_fd = va_arg(argp, int);
+                va_end(argp);
+                int fd_result = fcntl(fd, cmd, new_fd);
+                if(fd_result > 0){
+                    cort_hook_fd_info* info_n = waiter->wait_fd(fd_result);
+                    *info_n = *fd_info;
+                    info_n->fd = fd_result;
+                }
+                return fd_result;
+            }
+        }
+        
+        void* arg = va_arg(argp, void*); //passing argument more or with longer size is not harmful.
+        va_end(argp);
+        //We only support forward 3 arguments;
+        return fcntl(fd, cmd, arg);
     }
     
     #define CO_IO_HOOK_TEMPLATE(io_operation, pollevent, whattimeout) \
-    cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter; \
+    cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort()); \
     cort_hook_fd_info *fd_info; \
     if(waiter && (fd_info = (waiter->find_fd_waiter(fd)))){ \
         ssize_t result; \
@@ -132,7 +194,7 @@ extern "C"{
             } \
             waiter->set_cort_fd(fd); \
             waiter->set_poll_request(pollevent); \
-            cort_stackful_await(waiter); \
+            cort_stackful_yield(waiter); \
             waiter->remove_cort_fd();\
             if(waiter->is_timeout_or_stopped()){\
                 errno = EAGAIN;\
@@ -182,7 +244,7 @@ extern "C"{
     }
     
     int cort_hooked_connect(int fd, const struct sockaddr *addr, socklen_t addrlen){
-        cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter;
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort());
         cort_hook_fd_info *fd_info;
         if(waiter && (fd_info = (waiter->find_fd_waiter(fd)))){         
             int status;
@@ -214,7 +276,7 @@ extern "C"{
                 
             waiter->set_cort_fd(fd);
             waiter->set_poll_request(EPOLLOUT | EPOLLIN | EPOLLRDHUP);
-            cort_stackful_await(waiter);
+            cort_stackful_yield(waiter);
             uint32_t poll_event = waiter->get_poll_result();
             waiter->remove_cort_fd();
             
@@ -247,14 +309,18 @@ extern "C"{
         return connect(fd, addr, addrlen);
     }
     
-    int cort_hooked_accept(int fd, struct sockaddr *addr, socklen_t *addrlen){      
-        cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter;
+    int cort_hooked_accept4(int fd, struct sockaddr *addr, socklen_t *addrlen, int flags){      
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort());
         cort_hook_fd_info *fd_info;
         if(waiter && (fd_info = (waiter->find_fd_waiter(fd)))){ 
             int result;
             do{             
                 accept_again:
+                #if defined(__linux__)
+                result = accept4(fd, addr, addrlen, flags|SOCK_NONBLOCK);
+                #else
                 result = accept(fd, addr, addrlen);
+                #endif
                 if(result < 0){
                     int thread_errno = errno;
                     if(thread_errno != EAGAIN && EWOULDBLOCK != thread_errno){
@@ -277,7 +343,7 @@ extern "C"{
                 }
                 waiter->set_cort_fd(fd);
                 waiter->set_poll_request(EPOLLIN);
-                cort_stackful_await(waiter);
+                cort_stackful_yield(waiter);
                 waiter->remove_cort_fd();
                 if(waiter->is_timeout_or_stopped()){
                     errno = EAGAIN;
@@ -288,45 +354,68 @@ extern "C"{
                 }
             }while(true);
             if(result > 0){
-                waiter->wait_fd(fd);
-                set_non_block(fd);
+                waiter->wait_fd(fd);               
+                #if !defined(__linux__)
+                set_fd_non_block(fd);
+                #endif
             }
             return result;
         }
+        #if defined(__linux__)
+        return accept4(fd, addr, addrlen, flags);
+        #else
         return accept(fd, addr, addrlen);
+        #endif
     }
     
-    void cort_hooked_usleep(int usec){
-        cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter;
-        if(waiter != 0 && waiter->is_set_timeout()){
-            cort_timeout_waiter::time_ms_t end_time = waiter->get_timeout_time(), now_time = cort_timer_refresh_clock();
-            if(end_time > now_time){
-                if(((int)(end_time - now_time))*1000 < usec){
-                    waiter->stackless_resume(waiter);
-                    waiter->after_stackful_resume();
-                }else{
-                    cort_timeout_waiter::time_ms_t sleep_time = (cort_timeout_waiter::time_ms_t)(usec/1000);
-                    if(sleep_time > 0){
-                        waiter->await(new cort_sleeper(sleep_time));
-                        cort_stackful_await(waiter);
+    int cort_hooked_accept(int fd, struct sockaddr *addr, socklen_t *addrlen){
+        return cort_hooked_accept4(fd, addr, addrlen, 0);
+    }
+    
+    int cort_hooked_usleep(int usec){
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort());
+        if(waiter != 0 ){
+            if(waiter->is_set_timeout()){
+                cort_timeout_waiter::time_ms_t end_time = waiter->get_timeout_time(), now_time = cort_timer_now_ms_refresh();
+                if(end_time > now_time){
+                    if(((int)(end_time - now_time))*1000 < usec){
+                        waiter->stackless_resume(waiter);        //we return quicker
+                        waiter->after_stackful_resume();
+                    }else{
+                        cort_timeout_waiter::time_ms_t sleep_time = (cort_timeout_waiter::time_ms_t)(usec/1000);
+                        if(sleep_time > 0 && waiter->await(new cort_sleeper(sleep_time))){
+                            cort_stackful_yield(waiter); //wait to be resumed.
+                        }
                     }
                 }
+            }else{
+                waiter->set_timeout((cort_timeout_waiter::time_ms_t)(usec/1000));
+                cort_stackful_yield(waiter); //wait to be resumed.
             }
-            return;
+            return 0;
         }
-        usleep(usec);
+        return usleep(usec);
     }
     
     int cort_hooked_epoll_wait(int fd, struct epoll_event *events, int maxevents, int timeout){
-        cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter;
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort());
         if(waiter){
             if(waiter->is_timeout_or_stopped()){
                 return 0;
             }
-            if(maxevents == 0){
-                cort_hooked_usleep(timeout * 1000);
-                return 0;
+            if(waiter->is_set_timeout()){
+                cort_timeout_waiter::time_ms_t end_time = waiter->get_timeout_time(), now_time = cort_timer_now_ms_refresh();
+                if(end_time <= now_time){
+                    return 0;
+                }
+                if(timeout > (int)(end_time - now_time)){
+                    timeout = (int)(end_time - now_time);
+                }
             }
+            if(maxevents == 0){
+                return cort_hooked_usleep(timeout * 1000);
+            }
+                
             bool new_timeout = false;
             if(timeout > 0 && !waiter->is_set_timeout()){
                 waiter->set_timeout(timeout);
@@ -334,7 +423,7 @@ extern "C"{
             }
             waiter->set_cort_fd(fd);
             waiter->set_poll_request(EPOLLIN);
-            cort_stackful_await(waiter);
+            cort_stackful_yield(waiter);
             waiter->remove_cort_fd();
             if(waiter->is_timeout_or_stopped()){
                 return 0;
@@ -370,11 +459,24 @@ extern "C"{
     } 
     
     int cort_hooked_poll(struct pollfd *fds, nfds_t nfds, int timeout){     
-        cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter;
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort());
         if(waiter){
             if(waiter->is_timeout_or_stopped()){
                 return 0;
             }
+            if(waiter->is_set_timeout()){
+                cort_timeout_waiter::time_ms_t end_time = waiter->get_timeout_time(), now_time = cort_timer_now_ms_refresh();
+                if(end_time <= now_time){
+                    return 0;
+                }
+                if( timeout > (int)(end_time - now_time)){
+                    timeout = (int)(end_time - now_time);
+                }
+            }
+            if(nfds == 0){
+                return cort_hooked_usleep(timeout * 1000);
+            }
+            
             if(nfds == 1){
                  //Usually socket is writable
                 if((fds->events & POLLOUT) == POLLOUT){ 
@@ -390,7 +492,7 @@ extern "C"{
                 }
                 waiter->set_cort_fd(fds->fd);
                 waiter->set_poll_request(get_epoll_event(fds->events));
-                cort_stackful_await(waiter);
+                cort_stackful_yield(waiter);
                 uint32_t poll_event = waiter->get_poll_result();
                 waiter->remove_cort_fd();
                 if(waiter->is_timeout_or_stopped()){
@@ -401,10 +503,6 @@ extern "C"{
                 }
                 fds->revents = get_poll_event(poll_event);
                 return 1;
-            }
-            if(nfds == 0){
-                cort_hooked_usleep(timeout * 1000);
-                return 0;
             }
             
             int epfd = epoll_create(10);
@@ -424,7 +522,7 @@ extern "C"{
             }
             waiter->set_cort_fd(epfd);
             waiter->set_poll_request(EPOLLIN);
-            cort_stackful_await(waiter);
+            cort_stackful_yield(waiter);
             waiter->close_cort_fd();
             if(waiter->is_timeout_or_stopped()){
                 return 0;
@@ -459,7 +557,7 @@ extern "C"{
             return 0;
         }
         
-        cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter;
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort());
         if(waiter){
             if(waiter->is_timeout_or_stopped()){
                 return 0;
@@ -497,7 +595,7 @@ extern "C"{
             }
             waiter->set_cort_fd(epfd);
             waiter->set_poll_request(EPOLLIN);
-            cort_stackful_await(waiter);
+            cort_stackful_yield(waiter);
             waiter->close_cort_fd();
             if(waiter->is_timeout_or_stopped()){
                 return 0;
@@ -512,7 +610,7 @@ extern "C"{
     }
     
     int cort_hooked_close(int fd){
-        cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter;
+        cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort());
         if(waiter){
             waiter->remove_fd(fd);
         }
@@ -522,7 +620,7 @@ extern "C"{
     int cort_hooked_setsockopt(int fd, int level, int optname, struct timeval *optval, socklen_t optlen){
         if (level == SOL_SOCKET && (optname == SO_RCVTIMEO || optname == SO_SNDTIMEO)) {
             cort_hook_fd_info *fd_info;
-            cort_stackful_fds_waiter* waiter = current_cort_stackful_fds_waiter;
+            cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort());
             if(waiter && (fd_info = (waiter->find_fd_waiter(fd)))){ 
                 uint32_t max_time = (uint32_t)(optval->tv_sec * 1000 + optval->tv_usec/10000);
                 if(optname == SO_RCVTIMEO){
