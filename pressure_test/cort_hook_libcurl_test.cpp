@@ -70,6 +70,7 @@ struct libcurl_cort : public cort_stackful_fds_waiter{
             cort_timeout_waiter::time_ms_t end_time = cort_timer_now_ms_refresh();
             total_time_cost += end_time - begin_time;
             query_time_cost = end_time - begin_time;
+            *(&query_time_cost) =  end_time - begin_time;
             --cort_count;
         CO_END
     }

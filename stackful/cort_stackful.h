@@ -166,6 +166,10 @@ struct co_local<T, true, false> : public cort_stackful_local_storage_meta{
         init_value.init_value = init_value_arg;
     }
     
+    T* operator &() const {
+        return (T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.init_value));
+    }
+    
     operator T&() const {
         return *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.init_value));
     }
