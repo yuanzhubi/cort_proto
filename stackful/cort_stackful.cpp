@@ -1,6 +1,6 @@
 #include "cort_stackful.h"
 
-static __thread cort_stackful* current_thread_coroutine = 0;
+__thread cort_stackful* current_thread_coroutine = 0;
 
 cort_stackful* cort_stackful::get_current_thread_cort(){
     return current_thread_coroutine;
@@ -23,44 +23,64 @@ cort_proto* cort_stackful::stackful_start(cort_proto* cort, cort_proto::run_type
     ,func_address
     );
 }
+struct cort_stackful_local_storage_data{
+    void* pointer;
+    int32_t version;
+};
 
+static const uint32_t coroutine_version_list_delta = 32;
 
-#include <vector>
+//The non-positive elements means they have been used but free for future.
+int32_t* cort_stackful_local_version_list = 0;
+int32_t cort_stackful_local_count = 0;
+int32_t cort_stackful_local_last_index = 0;
 
-static const uint32_t coroutine_version_list_delta = 8;
-
-static std::vector<int32_t> version_list(1, 1); //The non-positive elements means they have been used but free for future.
+static int32_t& init_cort_stackful_local_version_list(){
+    if(cort_stackful_local_version_list == 0){
+        cort_stackful_local_version_list = (int32_t*)calloc(coroutine_version_list_delta, sizeof(*cort_stackful_local_version_list));
+        cort_stackful_local_version_list[0] = coroutine_version_list_delta;
+        cort_stackful_local_last_index = 1;
+    }else if(cort_stackful_local_version_list[0] == cort_stackful_local_last_index){
+        cort_stackful_local_version_list = (int32_t*)realloc(cort_stackful_local_version_list, 
+            (cort_stackful_local_last_index + coroutine_version_list_delta) * sizeof(*cort_stackful_local_version_list));
+        memset(cort_stackful_local_version_list + cort_stackful_local_last_index, 0, coroutine_version_list_delta * sizeof(*cort_stackful_local_version_list));
+        cort_stackful_local_version_list[0] += coroutine_version_list_delta;
+    }
+    return cort_stackful_local_version_list[0];
+}
 
 void cort_stackful_local_storage_meta::cort_stackful_local_storage_register(){
-    int32_t last_index = version_list[0];
-    if(last_index >= (int32_t)version_list.size()){
-        version_list.resize(last_index + coroutine_version_list_delta);
-    }
+    init_cort_stackful_local_version_list();
+    int32_t last_index = cort_stackful_local_last_index;
     this->offset = last_index;
     
-    int32_t& current_ver = version_list[last_index];
+    int32_t& current_ver = cort_stackful_local_version_list[last_index];
     //& is for the smallest negative number x, that -x = x. So we elimate the sign bit which make -x = 0.
     current_ver = ((-current_ver) & (~(1<<(sizeof(current_ver)*8 - 1)))) + 1; 
     this->version = current_ver;
-
-    const int32_t current_size = (int32_t)version_list.size();
-    while(++last_index < current_size && version_list[last_index] > 0);
-    version_list[0] = last_index;
+    while(++last_index < cort_stackful_local_version_list[0] && cort_stackful_local_version_list[last_index] > 0);
+    cort_stackful_local_last_index = last_index;
+    ++cort_stackful_local_count;
 }
 
 void cort_stackful_local_storage_meta::cort_stackful_local_storage_unregister(){
-    int32_t& last_index = version_list[0];
+    int32_t& last_index = cort_stackful_local_version_list[0];
     int32_t loffset = this->offset;
-    int32_t& lversion = version_list[loffset];
+    int32_t& lversion = cort_stackful_local_version_list[loffset];
     
     lversion = -lversion;
     
     if(last_index > loffset){
         last_index = loffset;
     }
+    --cort_stackful_local_count;
+    if(cort_stackful_local_count == 0) {
+        free(cort_stackful_local_version_list);
+        cort_stackful_local_version_list = 0;
+    }
 }
 
-void** cort_stackful::get_local_storage(const cort_stackful_local_storage_meta& meta_data)
+void* cort_stackful::get_local_storage(const cort_stackful_local_storage_meta& meta_data, const void* init_value_address)
 {
     static const size_t cort_stackful_local_storage_delta = sizeof(void*);
     
@@ -72,21 +92,38 @@ void** cort_stackful::get_local_storage(const cort_stackful_local_storage_meta& 
         need_capacity = ((need_capacity + cort_stackful_local_storage_delta - 1) & (~(cort_stackful_local_storage_delta - 1)));
         cort_stackful_local_storage = (cort_stackful_local_storage_data*)calloc(sizeof(*cort_stackful_local_storage), need_capacity);
         cort_stackful_local_storage->pointer = (void*)need_capacity;
-        cort_stackful_local_storage[meta_data.offset].version = meta_data.version;            
+                 
     }else if(need_capacity > (size_t)(cort_stackful_local_storage->pointer) ){
         size_t prev = (size_t)(cort_stackful_local_storage->pointer) ;
         need_capacity = ((need_capacity + cort_stackful_local_storage_delta - 1) & (~(cort_stackful_local_storage_delta - 1)));
         cort_stackful_local_storage = (cort_stackful_local_storage_data*)realloc(cort_stackful_local_storage, sizeof(*cort_stackful_local_storage) * need_capacity);
         memset(cort_stackful_local_storage + prev, 0, (need_capacity - prev) * sizeof(*cort_stackful_local_storage));
-        cort_stackful_local_storage->pointer  = (void*)need_capacity;
-        cort_stackful_local_storage[meta_data.offset].version = meta_data.version;
+        cort_stackful_local_storage->pointer = (void*)need_capacity;
     }
     
     cort_stackful_local_storage_data& result = cort_stackful_local_storage[meta_data.offset];
-    if(meta_data.version != result.version){
-        result.pointer = meta_data.init_value;
+    if(result.version != meta_data.version){
+        if(result.pointer == 0){
+            result.pointer = malloc(sizeof(result.pointer));
+        }
+        *(void**)result.pointer = *(void**)init_value_address;
         result.version = meta_data.version;
     }
     
-    return &(result.pointer);
+    return (result.pointer);
+}
+
+cort_stackful::~cort_stackful(){
+    if(is_strong_ref){
+        free(stack_base);
+    }
+    if(cort_stackful_local_storage){       
+        for(cort_stackful_local_storage_data *begin = cort_stackful_local_storage + 1, *end = cort_stackful_local_storage + (size_t)cort_stackful_local_storage->pointer;
+            begin < end; ++begin){
+            if(begin->pointer != 0){
+                free(begin->pointer);
+            }
+        }
+        free(cort_stackful_local_storage);
+    }
 }

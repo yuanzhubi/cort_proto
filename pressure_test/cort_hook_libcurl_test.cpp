@@ -35,10 +35,11 @@ struct print_result_cort: public cort_auto{
     }
 };
 
-size_t write_callback(char *ptr, size_t size, size_t nmemb, void *userdata){
+static size_t write_callback(char *ptr, size_t size, size_t nmemb, void *userdata){
     return size * nmemb;
 }
 
+co_local<int> query_time_cost(0);
 struct libcurl_cort : public cort_stackful_fds_waiter{
     CO_STACKFUL_DECL(libcurl_cort)
     libcurl_cort(){
@@ -68,6 +69,7 @@ struct libcurl_cort : public cort_stackful_fds_waiter{
             }
             cort_timeout_waiter::time_ms_t end_time = cort_timer_now_ms_refresh();
             total_time_cost += end_time - begin_time;
+            query_time_cost = end_time - begin_time;
             --cort_count;
         CO_END
     }

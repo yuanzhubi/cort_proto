@@ -58,7 +58,7 @@ void cort_stackful_yield(T* stackful_and_stackless_cort){
 struct cort_stackful_local_storage_meta{
     int32_t offset;
     int32_t version; //Maybe the dynamic library load or unload repeatedly so that offset need to be reused.
-    void* init_value;
+
     cort_stackful_local_storage_meta(){
         cort_stackful_local_storage_meta::cort_stackful_local_storage_register();
     }
@@ -67,12 +67,13 @@ struct cort_stackful_local_storage_meta{
     }
     void cort_stackful_local_storage_register();
     void cort_stackful_local_storage_unregister();
+    
+private:
+    cort_stackful_local_storage_meta(const cort_stackful_local_storage_meta&);
+    cort_stackful_local_storage_meta& operator = (const cort_stackful_local_storage_meta&);
 };
 
-struct cort_stackful_local_storage_data{
-    void* pointer;
-    int32_t version;
-};
+struct cort_stackful_local_storage_data;
     
 struct cort_stackful{ 
     static const uint32_t default_stack_size = 24*1024; 
@@ -127,7 +128,7 @@ struct cort_stackful{
         }
     }
 
-    void** get_local_storage(const cort_stackful_local_storage_meta& meta_data);
+    void* get_local_storage(const cort_stackful_local_storage_meta& meta_data, const void* init_value_address);
     
     static cort_stackful* get_current_thread_cort();
     
@@ -141,14 +142,7 @@ struct cort_stackful{
         cort_stackful_local_storage = 0;
     }
     
-    ~cort_stackful(){
-        if(is_strong_ref){
-            free(stack_base);
-        }
-        if(cort_stackful_local_storage){
-            free(cort_stackful_local_storage);
-        }
-    }
+    ~cort_stackful();
 private:
     cort_stackful(const cort_stackful&);
 };                                                                  
@@ -159,21 +153,31 @@ struct co_local;
 
 template <typename T>
 struct co_local<T, true, false> : public cort_stackful_local_storage_meta{
+    union{
+        T init_value;
+        void* padding;
+    }init_value;
+    
     co_local() : cort_stackful_local_storage_meta(){
-        init_value = 0;
+        init_value.init_value = 0;
     }
     
-    co_local(T init_value_arg) : cort_stackful_local_storage_meta(){
-        *(T*)(&init_value) = init_value_arg; //Maybe T is float type so do not assign directly
+    explicit co_local(T init_value_arg) : cort_stackful_local_storage_meta(){
+        init_value.init_value = init_value_arg;
     }
     
-    operator T() const {
-        return *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this));
+    operator T&() const {
+        return *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.init_value));
     }
     
-    //Do not hold the address of the return value because it maybe be changed after you visit other coroutine local variables.
+    T& operator = (T arg) const{
+        T& result = *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.init_value));
+        result = arg;
+        return result;
+    }
+    
     T& operator()() const {
-        return *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this));
+        return *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.init_value));
     }
 };
 
