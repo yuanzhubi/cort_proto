@@ -84,7 +84,7 @@ struct cort_stackful{
     uint16_t reserved_count;
     bool is_strong_ref;
     
-    cort_stackful_local_storage_data* cort_stackful_local_storage;
+    cort_stackful_local_storage_data **cort_stackful_local_storage;
     
     cort_proto* stackful_start(cort_proto* cort, cort_proto::run_type func_address);
     
@@ -128,7 +128,7 @@ struct cort_stackful{
         }
     }
 
-    void* get_local_storage(const cort_stackful_local_storage_meta& meta_data, const void* init_value_address);
+    void* get_local_storage(const cort_stackful_local_storage_meta& meta_data, void* const *init_value_address);
     
     static cort_stackful* get_current_thread_cort();
     
@@ -166,18 +166,22 @@ struct co_local<T, true, false> : public cort_stackful_local_storage_meta{
         init_value.init_value = init_value_arg;
     }
     
+    T* operator &() const {
+        return (T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.padding));
+    }
+    
     operator T&() const {
-        return *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.init_value));
+        return *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.padding));
     }
     
     T& operator = (T arg) const{
-        T& result = *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.init_value));
+        T& result = *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.padding));
         result = arg;
         return result;
     }
     
     T& operator()() const {
-        return *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.init_value));
+        return *(T*)(cort_stackful::get_current_thread_cort()->get_local_storage(*this, &init_value.padding));
     }
 };
 

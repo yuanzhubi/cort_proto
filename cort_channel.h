@@ -228,7 +228,7 @@ public:
    
     //But you need to await the coroutine wait_popable before consume.
     T* get(){
-        if(objects.empty() || is_closed()){
+        if(objects.size() == 0 || is_closed()){
             return 0;
         }
         return &objects.front();

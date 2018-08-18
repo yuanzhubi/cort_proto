@@ -23,8 +23,9 @@ cort_proto* cort_stackful::stackful_start(cort_proto* cort, cort_proto::run_type
     ,func_address
     );
 }
+
 struct cort_stackful_local_storage_data{
-    void* pointer;
+    void* value;
     int32_t version;
 };
 
@@ -80,7 +81,7 @@ void cort_stackful_local_storage_meta::cort_stackful_local_storage_unregister(){
     }
 }
 
-void* cort_stackful::get_local_storage(const cort_stackful_local_storage_meta& meta_data, const void* init_value_address)
+void* cort_stackful::get_local_storage(const cort_stackful_local_storage_meta& meta_data, void* const *init_value_address)
 {
     static const size_t cort_stackful_local_storage_delta = sizeof(void*);
     
@@ -90,27 +91,28 @@ void* cort_stackful::get_local_storage(const cort_stackful_local_storage_meta& m
     size_t need_capacity = meta_data.offset + 1;
     if(cort_stackful_local_storage == 0){
         need_capacity = ((need_capacity + cort_stackful_local_storage_delta - 1) & (~(cort_stackful_local_storage_delta - 1)));
-        cort_stackful_local_storage = (cort_stackful_local_storage_data*)calloc(sizeof(*cort_stackful_local_storage), need_capacity);
-        cort_stackful_local_storage->pointer = (void*)need_capacity;
-                 
-    }else if(need_capacity > (size_t)(cort_stackful_local_storage->pointer) ){
-        size_t prev = (size_t)(cort_stackful_local_storage->pointer) ;
+        cort_stackful_local_storage = (cort_stackful_local_storage_data**)calloc(sizeof(*cort_stackful_local_storage), need_capacity);
+        cort_stackful_local_storage[0] = (cort_stackful_local_storage_data *)need_capacity;
+    }else if(need_capacity > (size_t)(cort_stackful_local_storage[0]) ){
+        size_t prev = (size_t)(cort_stackful_local_storage[0]) ;
         need_capacity = ((need_capacity + cort_stackful_local_storage_delta - 1) & (~(cort_stackful_local_storage_delta - 1)));
-        cort_stackful_local_storage = (cort_stackful_local_storage_data*)realloc(cort_stackful_local_storage, sizeof(*cort_stackful_local_storage) * need_capacity);
+        cort_stackful_local_storage = (cort_stackful_local_storage_data**)realloc(cort_stackful_local_storage, sizeof(*cort_stackful_local_storage) * need_capacity);
         memset(cort_stackful_local_storage + prev, 0, (need_capacity - prev) * sizeof(*cort_stackful_local_storage));
-        cort_stackful_local_storage->pointer = (void*)need_capacity;
+        cort_stackful_local_storage[0] = (cort_stackful_local_storage_data *)need_capacity;
     }
     
-    cort_stackful_local_storage_data& result = cort_stackful_local_storage[meta_data.offset];
-    if(result.version != meta_data.version){
-        if(result.pointer == 0){
-            result.pointer = malloc(sizeof(result.pointer));
-        }
-        *(void**)result.pointer = *(void**)init_value_address;
-        result.version = meta_data.version;
+    cort_stackful_local_storage_data* &result = cort_stackful_local_storage[meta_data.offset];
+    if(result == 0){
+        result = (cort_stackful_local_storage_data*)malloc(sizeof(*result));
+        result->value = *init_value_address;
+        result->version = meta_data.version;
+    }
+    if(result->version != meta_data.version){
+        result->value = *init_value_address;
+        result->version = meta_data.version;
     }
     
-    return (result.pointer);
+    return &(result->value);
 }
 
 cort_stackful::~cort_stackful(){
@@ -118,10 +120,10 @@ cort_stackful::~cort_stackful(){
         free(stack_base);
     }
     if(cort_stackful_local_storage){       
-        for(cort_stackful_local_storage_data *begin = cort_stackful_local_storage + 1, *end = cort_stackful_local_storage + (size_t)cort_stackful_local_storage->pointer;
+        for(cort_stackful_local_storage_data **begin = cort_stackful_local_storage + 1, **end = cort_stackful_local_storage + (size_t)(cort_stackful_local_storage[0]);
             begin < end; ++begin){
-            if(begin->pointer != 0){
-                free(begin->pointer);
+            if(*begin != 0){
+                free(*begin);
             }
         }
         free(cort_stackful_local_storage);

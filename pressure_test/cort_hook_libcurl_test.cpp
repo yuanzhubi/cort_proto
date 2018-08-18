@@ -13,7 +13,7 @@ int keepalive_timeout = 300;
 
 //const char *ip = "203.205.128.137";
 const char* ip = "183.3.226.21";
-unsigned int speed = 100;
+double speed = 100;
 std::string query = "http://";
 
 unsigned int error_count_total = 0;
@@ -70,6 +70,7 @@ struct libcurl_cort : public cort_stackful_fds_waiter{
             cort_timeout_waiter::time_ms_t end_time = cort_timer_now_ms_refresh();
             total_time_cost += end_time - begin_time;
             query_time_cost = end_time - begin_time;
+            *(&query_time_cost) =  end_time - begin_time;
             --cort_count;
         CO_END
     }
@@ -125,7 +126,7 @@ int main(int argc, char* argv[]){
     }
 
     if(argc > 2){
-        speed = (unsigned int)(atoi(argv[2]));
+        speed = (atof(argv[2]));
     }
     query += ip;
     //query += "/pingd?dm=www.qq.com&url=/"; //http://pingfore.qq.com/pingd?dm=news.qq.com&url=/  300ms latency, 62bytes response, 
