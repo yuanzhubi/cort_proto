@@ -278,22 +278,27 @@ struct cort_repeater : public cort_timeout_waiter{
     static const unsigned int reset_times = 9;
     cort_proto* start(){
         counter = 0;
+        start_time = 0;
         CO_BEGIN
             if(!this->is_stopped()){
                 set_timeout(interval);               
                 if(req_count > 1.0){    
                     unsigned int this_time_count;
-                    if(counter == 0){
-                        start_time = cort_timer_now_ms();
+                    if(counter == 0){                       
+                        cort_timeout_waiter::time_ms_t current_time = cort_timer_now_ms_refresh();
+                        if(start_time != 0){
+                            this_time_count = (unsigned int)((current_time - start_time ) * req_count / 1000.0 - ((unsigned int)req_per_interval) * (reset_times));
+                        }else{
+                            this_time_count = 0;
+                        }
                         counter = 1;
+                        start_time = current_time;
+                    }else{ 
                         this_time_count = (unsigned int)req_per_interval;
-                    }else{                       
-                        if(counter != reset_times){
-                            this_time_count = (unsigned int)req_per_interval;
+                        if(counter != reset_times){                           
                             ++counter;
                         }else{
                             counter = 0;
-                            this_time_count = (unsigned int)((cort_timer_now_ms() - start_time + interval) * req_count / 1000.0 - ((unsigned int)req_per_interval) * reset_times);
                         }
                     }
                     while(this_time_count != 0){
