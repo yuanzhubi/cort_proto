@@ -24,6 +24,10 @@ namespace cort_socket_error_codes{
 	}
 }
 
+#if !defined(EPOLLRDHUP)
+#define EPOLLRDHUP 0
+#endif
+
 cort_tcp_ctrler::cort_tcp_ctrler(){
 //Connection	
 	timeout = 0;

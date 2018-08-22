@@ -60,7 +60,7 @@ struct print_result_cort: public cort_auto{
         CO_END
     }
 };
-int64_t total_test_count = 100000000000;
+int64_t total_test_count = 100000000000ll;
 bool ended = false;
 struct send_cort : public cort_auto{
     CO_DECL(send_cort)

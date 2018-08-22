@@ -174,7 +174,7 @@ struct cort_is_class_or_union{
     template <typename G>
     static char2 is_class_test(...);
     
-    const static bool result = sizeof(this_type::is_class_test<T>(0)) == sizeof(char);
+    const static bool result = sizeof(is_class_test<T>(0)) == sizeof(char);
 };
   
                                                          

@@ -22,6 +22,13 @@
 #include <stdint.h>
 #include <signal.h>
 
+
+#if !defined(EPOLLRDHUP)
+#define EPOLLRDHUP 0
+#undef __linux__
+#define F_DUPFD_CLOEXEC 1030
+#endif
+
 cort_stackful_fds_waiter::cort_stackful_fds_waiter(){
     fds_array = 0;
 }
@@ -98,7 +105,7 @@ extern "C"{
         }
         return fd_result;
     }
-    
+#if defined(__linux__) 
     int cort_hooked_dup3(int fd, int newfd, int flags){
         int fd_result = dup3(fd, newfd, flags);
         if(fd_result >= 0){
@@ -112,7 +119,7 @@ extern "C"{
         }
         return fd_result;
     }
-    
+#endif    
     int cort_hooked_ioctl(int fd, unsigned long cmd, ...)
     {
         cort_stackful_fds_waiter* waiter = (cort_stackful_fds_waiter*)(cort_stackful::get_current_thread_cort()); 

@@ -154,7 +154,7 @@
 #endif
 
 /* The size of `long', as computed by sizeof. */
-#define CURL_SIZEOF_LONG 8
+#define CURL_SIZEOF_LONG sizeof(long)
 
 /* Integral data type used for curl_socklen_t. */
 #define CURL_TYPEOF_CURL_SOCKLEN_T socklen_t
@@ -181,7 +181,7 @@ typedef CURL_TYPEOF_CURL_OFF_T curl_off_t;
 #define CURL_FORMAT_OFF_T "%ld"
 
 /* The size of `curl_off_t', as computed by sizeof. */
-#define CURL_SIZEOF_CURL_OFF_T 8
+#define CURL_SIZEOF_CURL_OFF_T sizeof(long)
 
 /* curl_off_t constant suffix. */
 #define CURL_SUFFIX_CURL_OFF_T L

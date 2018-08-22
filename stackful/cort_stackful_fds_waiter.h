@@ -117,6 +117,4 @@ extern "C"{
     extern int cort_hooked_fcntl(int fd, int cmd, ...);
 }
 
-
-
 #endif

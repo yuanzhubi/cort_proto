@@ -16,8 +16,11 @@
 #define CO_THIS_AWAITABLE CO_AWAITABLE      //Declare a member function result is awaitable in another coroutine member function of current class or its subclass.
 
 struct cort_proto;
+
 struct cort_base{
-    virtual void clear() = 0;                //Make this class own virtual table pointer.
+    //trivial but virtual destructor
+    virtual ~cort_base(){}
+    
     cort_proto* cort_parent;                //The parent coroutine that waits this coroutine.
     void remove_parent(){
         cort_parent = 0;
@@ -61,10 +64,7 @@ public:
         cort_wait_count = 0;
         data10.cort_then_function = 0;
     }
-    
-    //trivial but virtual destructor
-    virtual ~cort_proto(){}
-    
+
     //So the cort_proto coroutine will cost (4+1)*sizeof(void*) bytes, 4 data meber, 1 virtual function table pointer.    
 
     run_type get_callback_function() const {

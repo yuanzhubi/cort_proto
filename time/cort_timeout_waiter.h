@@ -281,7 +281,7 @@ struct cort_repeater : public cort_timeout_waiter{
         start_time = 0;
         CO_BEGIN
             if(!this->is_stopped()){
-                set_timeout(interval);               
+                this->set_timeout(interval);               
                 if(req_count > 1.0){    
                     unsigned int this_time_count;
                     if(counter == 0){                       

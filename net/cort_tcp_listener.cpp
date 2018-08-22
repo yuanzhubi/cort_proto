@@ -18,6 +18,10 @@
 	return (x); \
 }while(false)
 
+#if !defined(EPOLLRDHUP)
+#define EPOLLRDHUP 0
+#undef __linux__
+#endif
 cort_tcp_listener::cort_tcp_listener(){
 	backlog = 0;
 	listen_port = 0;
