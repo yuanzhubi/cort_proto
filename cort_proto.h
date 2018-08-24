@@ -359,7 +359,7 @@ public: \
 
 //After wait in CO_AWAIT_AGAIN finished, it will not turn to next resume point as CO_AWAIT but previous one. It behaves like a loop.
 //The argument of CO_AWAIT_AGAIN is same as CO_AWAIT.
-//It still can not be used in any branch or loop.
+
 #define CO_AWAIT_AGAIN(...) do{ \
         cort_proto* __wait_result_cort = (CO_EXPAND(CO_GET_1ST_ARG(__VA_ARGS__)))->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__, cort_start))();\
         if(__wait_result_cort != 0){\
@@ -369,7 +369,18 @@ public: \
             return this; \
         }\
     }while(false); \
-    CO_NEXT_STATE;
+    return start_static(this); 
+    
+#define CO_AWAIT_ALL_AGAIN(...) do{ \
+        size_t current_wait_count = 0; \
+        CO_FOR_EACH(CO_AWAIT_MULTI_IMPL, __VA_ARGS__) \
+        if(current_wait_count != 0){ \
+            this->set_wait_count(current_wait_count); \
+            this->set_callback_function((run_type)(&cort_this_type::start_static)); \
+            return this; \
+        } \
+    }while(false);\
+    return start_static(this);
 
 //Sometimes you know you will await some coroutine but you do not know who it is. Or current coroutine is a leaf coroutine and should be resumed manually.
 //Using CO_AWAIT_UNKNOWN(), other coroutines can later use cort_proto::await to tell current one what it should wait.
@@ -384,8 +395,7 @@ public: \
 #define CO_AWAIT_UNKNOWN_AGAIN() do{ \
         this->set_callback_function((run_type)(&cort_this_type::start_static)); \
         return this; \
-    }while(false); \
-   CO_NEXT_STATE
+    }while(false); 
     
 //Some other language use "yield" keyword to implement the "CO_AWAIT_UNKNOWN". So we provide a similiar interface name.
 //So CO_YIELD or CO_YIELD_X also generates new resume point.
@@ -407,16 +417,14 @@ public: \
     CO_AWAIT_RANGE(sub_cort_begin, sub_cort_end)  
 
 #define CO_AWAIT_AGAIN_IF(bool_exp, ...) \
-    if(!(bool_exp)){CO_SKIP_AWAIT; } \
-    CO_AWAIT_AGAIN(__VA_ARGS__)
-
+    if(bool_exp){CO_AWAIT_AGAIN(__VA_ARGS__); } \
+    
 #define CO_AWAIT_UNKNOWN_IF(bool_exp) \
     if(!(bool_exp)){CO_SKIP_AWAIT;} \
     CO_AWAIT_UNKNOWN()
     
 #define CO_AWAIT_UNKNOWN_AGAIN_IF(bool_exp) \
-    if(!(bool_exp)){CO_SKIP_AWAIT; } \
-    CO_AWAIT_UNKNOWN_AGAIN()
+    if(bool_exp){CO_AWAIT_UNKNOWN_AGAIN(); } \
     
 #define CO_YIELD_IF(bool_exp) CO_AWAIT_UNKNOWN_IF(bool_exp)
 #define CO_YIELD_AGAIN_IF(bool_exp)  CO_AWAIT_UNKNOWN_AGAIN_IF(bool_exp)

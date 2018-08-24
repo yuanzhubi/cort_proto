@@ -129,12 +129,12 @@ struct send_buffer_ctrl{
 	}
 	
 	//weak reference
-	char* set_send_buffer(char* src_buffer, int32_t arg_size){
+	const char* set_send_buffer(const char* src_buffer, int32_t arg_size){
 		size_t index = get_free_index();
 		if(index == max_send_queue_size){
 			return 0;
 		}
-		send_data[index].iov_base = src_buffer;
+		send_data[index].iov_base = (void*)src_buffer;
 		send_data[index].iov_len = arg_size;
 		send_data_tag[index] = 1<<31;
 		if(index != max_send_queue_size - 1){
@@ -160,7 +160,7 @@ struct send_buffer_ctrl{
 	}
 	
 	//strong reference
-	char* copy_send_buffer(char* src_buffer, int32_t arg_size){
+	char* copy_send_buffer(const char* src_buffer, int32_t arg_size){
 		size_t index = get_free_index();
 		if(index == max_send_queue_size){
 			return 0;
@@ -371,7 +371,7 @@ public:
 	}
 	
 	//weak reference, return zero if too much data are waiting in the sending queue.
-	char* set_send_buffer(char* src_buffer, int32_t arg_size){
+	const char* set_send_buffer(const char* src_buffer, int32_t arg_size){
 		return send_buffer.set_send_buffer(src_buffer, arg_size);
 	}
 
@@ -381,7 +381,7 @@ public:
 	}
 	
 	//strong reference, return zero if too much data to be sended
-	char* copy_send_buffer(char* src_buffer, int32_t arg_size){
+	char* copy_send_buffer(const char* src_buffer, int32_t arg_size){
 		return send_buffer.copy_send_buffer(src_buffer, arg_size);
 	}
 
@@ -454,6 +454,8 @@ public:
 		return (cort_tcp_connection_waiter_for_recv*)lock_waiter();
 	}
 	
+    void close_connection();
+    
 	cort_shared_ptr<cort_tcp_connection_waiter> connection_waiter;
 
 //Send & Receive

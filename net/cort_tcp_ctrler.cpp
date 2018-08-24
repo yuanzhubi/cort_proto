@@ -574,7 +574,11 @@ void cort_tcp_ctrler::on_connection_inactive(){
 		connection_waiter.clear();
 	}
 }
-
+void cort_tcp_ctrler::close_connection(){
+    if(connection_waiter){
+        connection_waiter->close_connection();
+    }
+}
 cort_proto* cort_tcp_ctrler::on_finish(){
 	if(connection_waiter){
 		if(get_errno() != 0){
