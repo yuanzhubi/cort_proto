@@ -23,10 +23,14 @@
 #include <signal.h>
 
 
-#if !defined(EPOLLRDHUP)
+#if !defined(EPOLLRDHUP) || !defined(SOCK_NONBLOCK)
 #define EPOLLRDHUP 0
 #undef __linux__
+
+#if !defined(F_DUPFD_CLOEXEC)
 #define F_DUPFD_CLOEXEC 1030
+#endif
+
 #endif
 
 cort_stackful_fds_waiter::cort_stackful_fds_waiter(){

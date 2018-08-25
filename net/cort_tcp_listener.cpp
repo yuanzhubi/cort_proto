@@ -18,7 +18,7 @@
 	return (x); \
 }while(false)
 
-#if !defined(EPOLLRDHUP)
+#if !defined(EPOLLRDHUP) || !defined(SOCK_NONBLOCK)
 #define EPOLLRDHUP 0
 #undef __linux__
 #endif

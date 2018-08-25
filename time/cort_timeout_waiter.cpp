@@ -410,7 +410,8 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
             cort_fd_waiter* fd_waiter = (cort_fd_waiter*)events[i].data.ptr;
             if(fd_waiter != 0){
                 fd_waiter->resume_on_poll(events[i].events);
-                if(eptimer == 0 && until_ms != 0){
+                if((eptimer == 0 && until_ms != 0) ||
+                    (eptimer == 0 && epfd == 0)){
                    return 0;
                 }
             }
