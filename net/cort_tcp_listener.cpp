@@ -18,7 +18,7 @@
 	return (x); \
 }while(false)
 
-#if !defined(EPOLLRDHUP)
+#if !defined(EPOLLRDHUP) || !defined(SOCK_NONBLOCK)
 #define EPOLLRDHUP 0
 #undef __linux__
 #endif
@@ -120,50 +120,50 @@ cort_proto* cort_tcp_listener::start(){
         int current_connection = 0;
         int thread_errno = 0;
     start_accept:
-    for(; current_connection<max_accept_one_loop; ++current_connection){
-        int &accept_fd = accept_result[current_connection].accept_fd;
-        sockaddr_in& servaddr = accept_result[current_connection].servaddr;
-		#if !defined(__linux__)
-		accept_fd = accept(listen_fd, (struct sockaddr*)&servaddr, &addrlen);
-		if(accept_fd > 0){
-			int flag = fcntl(accept_fd, F_GETFL);
-			if (-1 == flag || fcntl(accept_fd, F_SETFL, flag | O_NONBLOCK) == -1){
-				close(accept_fd);
-				break;
-			}
-			if(setsockopt_arg._.disable_no_delay == 0){
-				int flag = 1;
-				setsockopt(accept_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
-			}
-			if(setsockopt_arg._.enable_close_by_reset > 0){
-				linger lin;
-				lin.l_onoff = 1;
-				uint8_t flag = setsockopt_arg._.enable_close_by_reset;
-				lin.l_linger = (flag == 1? 0:flag);
-				setsockopt(accept_fd, SOL_SOCKET, SO_LINGER,(&lin), sizeof(lin));  
-			}			
-		}
-		#else
-		accept_fd = accept4(listen_fd, (struct sockaddr*)&servaddr, &addrlen, SOCK_NONBLOCK);
-		if(accept_fd > 0){
-			if(setsockopt_arg._.disable_no_delay == 0){
-				int flag = 1;
-				setsockopt(accept_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
-			}
-			if(setsockopt_arg._.enable_close_by_reset > 0){
-				linger lin;
-				lin.l_onoff = 1;
-				uint8_t flag = setsockopt_arg._.enable_close_by_reset;
-				lin.l_linger = (flag == 1? 0:flag);
-				setsockopt(accept_fd, SOL_SOCKET, SO_LINGER,(&lin), sizeof(lin));  
-			}
-		}
-		#endif
-        else{
-            thread_errno = errno;
-            break;
+        for(; current_connection<max_accept_one_loop; ++current_connection){
+            int &accept_fd = accept_result[current_connection].accept_fd;
+            sockaddr_in& servaddr = accept_result[current_connection].servaddr;
+            #if !defined(__linux__)
+            accept_fd = accept(listen_fd, (struct sockaddr*)&servaddr, &addrlen);
+            if(accept_fd > 0){
+                int flag = fcntl(accept_fd, F_GETFL);
+                if (-1 == flag || fcntl(accept_fd, F_SETFL, flag | O_NONBLOCK) == -1){
+                    close(accept_fd);
+                    break;
+                }
+                if(setsockopt_arg._.disable_no_delay == 0){
+                    int flag = 1;
+                    setsockopt(accept_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
+                }
+                if(setsockopt_arg._.enable_close_by_reset > 0){
+                    linger lin;
+                    lin.l_onoff = 1;
+                    uint8_t flag = setsockopt_arg._.enable_close_by_reset;
+                    lin.l_linger = (flag == 1? 0:flag);
+                    setsockopt(accept_fd, SOL_SOCKET, SO_LINGER,(&lin), sizeof(lin));  
+                }			
+            }
+            #else
+            accept_fd = accept4(listen_fd, (struct sockaddr*)&servaddr, &addrlen, SOCK_NONBLOCK);
+            if(accept_fd > 0){
+                if(setsockopt_arg._.disable_no_delay == 0){
+                    int flag = 1;
+                    setsockopt(accept_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
+                }
+                if(setsockopt_arg._.enable_close_by_reset > 0){
+                    linger lin;
+                    lin.l_onoff = 1;
+                    uint8_t flag = setsockopt_arg._.enable_close_by_reset;
+                    lin.l_linger = (flag == 1? 0:flag);
+                    setsockopt(accept_fd, SOL_SOCKET, SO_LINGER,(&lin), sizeof(lin));  
+                }
+            }
+            #endif
+            else{
+                thread_errno = errno;
+                break;
+            }
         }
-	}
         while(current_connection != 0){
             --current_connection;
             int &accept_fd = accept_result[current_connection].accept_fd;

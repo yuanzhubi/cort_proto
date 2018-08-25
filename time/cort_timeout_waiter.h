@@ -116,24 +116,6 @@ public:
     virtual ~cort_timeout_waiter();
 };
 
-struct cort_timeout : public cort_timeout_waiter{
-    cort_timeout(time_ms_t timeout_ms = 0){
-        if(timeout_ms != 0){
-            set_timeout(timeout_ms);
-        }
-    }
-    cort_proto* on_finish(){
-        delete this;
-        return 0; //get_parent()->resume() is called mannually so we should not return 0.
-    }
-    CO_DECL(cort_timeout)
-    cort_proto* start(){
-        CO_BEGIN
-            CO_YIELD();
-        CO_END
-    }
-};
-
 //我们还针对可被epoll的文件句柄封装了协程cort_fd_waiter。这个句柄 IO操作暂时不可用时，可以对这个句柄所属的cort_fd_waiter协程set_poll_request去监视他的可用性。
 //通常，你还应该同时设置这个监视的超时时间。
 //综上，cort_fd_waiter可能因为以下3个原因resume.
@@ -240,7 +222,7 @@ struct cort_sleeper : public cort_timeout_waiter{
     cort_proto* start(){
         CO_BEGIN
             CO_YIELD();
-            //Now it is must be timeout
+            //Now it must be timeout
         CO_END
     }
 protected:

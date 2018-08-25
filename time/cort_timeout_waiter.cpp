@@ -410,7 +410,8 @@ int cort_timer_poll(cort_timeout_waiter::time_ms_t until_ms){
             cort_fd_waiter* fd_waiter = (cort_fd_waiter*)events[i].data.ptr;
             if(fd_waiter != 0){
                 fd_waiter->resume_on_poll(events[i].events);
-                if(eptimer == 0 && until_ms != 0){
+                if((eptimer == 0 && until_ms != 0) ||
+                    (eptimer == 0 && epfd == 0)){
                    return 0;
                 }
             }
@@ -587,6 +588,10 @@ int cort_fd_waiter::remove_poll_request(){
             --epollfd_total_count;
             //fd_trace_set.erase(cort_fd);
             poll_request = 0;
+            if(this->ref_data != 0){
+                *this->ref_data = 0;
+                this->ref_data = 0;
+            }
         }
     }
     return 0;
@@ -594,6 +599,10 @@ int cort_fd_waiter::remove_poll_request(){
 
 void cort_fd_waiter::close_cort_fd(){
     if(cort_fd > -1){
+        if(this->ref_data != 0){
+            *this->ref_data = 0;
+            this->ref_data = 0;
+        }
         if(poll_request != 0){
             --epollfd_total_count;
             //fd_trace_set.erase(cort_fd);
