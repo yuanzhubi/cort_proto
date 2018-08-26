@@ -239,7 +239,7 @@ struct cort_http_proxy_server : cort_tcp_ctrler{
             if((get_poll_result() & EPOLLIN) != 0){
                 char buf[read_buf_size];
                 int count = read(get_cort_fd(), buf, sizeof(buf));
-                if(count > 0){
+                if(count > 0){ //The return value of pipe reading is too strange for me so we do not 
                     //is_finished = (get_poll_result() != EPOLLIN); EPOLLHUP may appear when the son process exits.
                     is_finished = false;
                     pack_result(buf, count);
@@ -294,7 +294,7 @@ struct cort_http_proxy_server : cort_tcp_ctrler{
                 
                 close(fds[1]);
                 proxy_listener.stop_listen(); 
-                exit(0);
+                exit(0);//We can not exit from main function gracefully.
             }
             close(fds[1]);
             
@@ -316,13 +316,11 @@ struct cort_http_proxy_server : cort_tcp_ctrler{
                 
                 if(!fwder.is_finished){//Waiting some more data from fwder and send back data.
                     CO_AWAIT_ALL_AGAIN(&fwder, lock_send());
-                }else{
-                    //fwder.close_cort_fd();
                 }
             }else{//Exception happened?
                 CO_RETURN;
             }
-            CO_AWAIT(lock_send());
+            CO_AWAIT(lock_send()); //Sending the rest data.
         CO_END
     }
 };
