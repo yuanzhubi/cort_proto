@@ -7,10 +7,12 @@
 #include <sys/wait.h>
 #include <vector>
 #include <sys/epoll.h>
+#include <errno.h>
 #include "../net/cort_tcp_listener.h"
 #include <fcntl.h>
 
 const char* default_http_port = "3000";
+const char* default_http_type = "";
 
 static uint32_t check_http_packet(const char *data, uint32_t len){
     if(len > 4 && 
@@ -43,7 +45,7 @@ static bool hex2dec_c( char input[2], char* output)
 struct HttpPacket{
     char*  cmd;
     std::vector<char*> args_list;
-    int type; //0 output text; 1 download file
+    int type; //0 output text; 1 download file; 2 render html
     bool init(char *data, size_t len)
     { 
         type = 0;
@@ -57,13 +59,13 @@ struct HttpPacket{
                               // 127.0.0.1./
                 *name-- = '/';
                 *name = '.';
-                cmd = name;          
+                cmd = name+2;          
             }else{            // 127.0.0.1/cmd?
                               // 127.0.0../cmd 
                 *data = 0;
                 name -= 2;
                 *name = '.';
-                cmd = name;
+                cmd = name+2;
                 args_list.push_back(cmd);
             }
             ++data;
@@ -111,15 +113,37 @@ struct HttpPacket{
             if(strcmp("./favicon.ico", cmd_begin) == 0){ //Some browser always send the request. Rejected!
                 return false;
             }
-            args_list.push_back(cmd_begin);
-            cmd = cmd_begin;
+            args_list.push_back(cmd_begin + 2);
+            cmd = cmd_begin+2;
         }
-        
-        if(args_list.size() == 2 && strcmp("download", args_list[1]) == 0){
+        if((args_list.size() == 2 && strcmp("download", args_list[1]) == 0)
+            || (args_list.size() == 1 && strcmp("download", default_http_type) == 0)){
+            args_list.resize(2);
             type = 1;
             cmd = (char*)"/bin/cat";
             args_list[1] = args_list[0];
             args_list[0] = cmd;
+        }else if(strcmp("download_proxy", default_http_type) == 0 && args_list.size() >= 1 ){
+            args_list.resize(3);
+            type = 1;
+            cmd = (char*)"/usr/bin/wget";
+            args_list[2] = args_list[0]+2;
+            args_list[1] = (char*)"-qO-";
+            args_list[0] = cmd;
+
+        }else if(strcmp("html", default_http_type) == 0 && args_list.size() == 1){
+	   args_list.resize(2);
+           type = 2;
+           cmd = (char*)"/bin/cat";
+           args_list[1] = args_list[0];
+           args_list[0] = cmd;
+	}else if(strcmp("html_proxy", default_http_type) == 0 && args_list.size() >= 1){
+           args_list.resize(3);
+           type = 2;
+           cmd = (char*)"/usr/bin/wget";
+           args_list[2] = args_list[0]+2;
+           args_list[1] = (char*)"-qO-";
+           args_list[0] = cmd;
         }
         copy(args_list.begin(), args_list.end(), std::ostream_iterator<const char*>(std::cout, " "));
         args_list.push_back(0);
@@ -134,9 +158,14 @@ struct HttpPacket{
 #define HEADER_DOWNLOAD "Connection: close\r\n" \
                         "Transfer-Encoding: chunked\r\n" \
                         "Content-Type: application/octet-stream\r\n"
-                        
+
+#define HEADER_HTML 	"Connection: close\r\n" \
+                        "Transfer-Encoding: chunked\r\n" \
+			"Content-Type: text/html; charset=utf-8\r\n"
+
 #define HEADER_200  "HTTP/1.1 200 OK\r\n" HEADER_COMMON
 #define HEADER_200_DOWNLOAD  "HTTP/1.1 200 OK\r\n" HEADER_DOWNLOAD
+#define HEADER_200_HTML  "HTTP/1.1 200 OK\r\n" HEADER_HTML
 #define HEADER_400  "HTTP/1.1 400 Bad Request\r\n" HEADER_COMMON
 #define HEADER_404  "HTTP/1.1 404 Not Found\r\n" HEADER_COMMON
 #define HEADER_500  "HTTP/1.1 500 Internal Error\r\n" HEADER_COMMON
@@ -208,6 +237,9 @@ struct cort_http_proxy_server : cort_tcp_ctrler{
                     case 1:
                         result = HEADER_200_DOWNLOAD;
                         break;
+		    case 2:
+			result = HEADER_200_HTML;
+			break;
                     default:
                         result = HEADER_200;
                     }
@@ -291,6 +323,7 @@ struct cort_http_proxy_server : cort_tcp_ctrler{
                 }else if(execv(packet.cmd, &(*packet.args_list.begin())) != 0){
                     write(fds[1], exec_error, sizeof(exec_error) - 1);
                 }
+		std::copy(packet.args_list.begin(), packet.args_list.end(), std::ostream_iterator<const char*>(std::cout," "));
                 
                 close(fds[1]);
                 proxy_listener.stop_listen(); 
@@ -360,7 +393,10 @@ int main(int argc, char* argv[]){
     if(argc > 1){
         default_http_port = argv[1];    
     }
-    puts("./run port(default 3000)\r\n"
+    if(argc > 2){
+        default_http_type = argv[2];
+    }
+    puts("./run port(default 3000) type(default cmd, could be download, download_proxy, html, html_proxy)\r\n"
         "Press ctrl+d to stop the server.");
         
     cort_timer_init();  
@@ -375,7 +411,7 @@ int main(int argc, char* argv[]){
         puts(cort_socket_error_codes::error_info(err_code));
         exit(errno);
     }
-    
+
     switcher.start();
     cort_timer_loop();
     cort_timer_destroy();
