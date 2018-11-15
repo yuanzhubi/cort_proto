@@ -19,4 +19,5 @@ rm -f *.o
 input_options=$@
 set -x
 $CXX $CXXFLAGS $LDFLAGS $input_options $compile_files -c 
+mkdir lib
 ar crs lib/libcort_proto.a *.o
