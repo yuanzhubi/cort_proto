@@ -107,7 +107,9 @@ cort_proto* fibonacci_cort::start(){
         //Or if c++11 supported
         //corts[0]->then<cort_then_output>(); corts[1]->then<cort_then_output>();
 
-        CO_AWAIT_ALL(corts[0], corts[1], &tester, &tester)
+        CO_AWAIT_ALL(corts[0], corts[1], &tester, &tester);
+
+
         //CO_AWAIT_RANGE_IF(true, corts, corts+2);
         //CO_AWAIT_IF(true, corts[0]); 
         //CO_AWAIT_IF(true, corts[1]);    
@@ -120,9 +122,56 @@ cort_proto* fibonacci_cort::start(){
         delete corts[0];
         delete corts[1];
         
-        CO_ASYNC_LB(cort_proto, (printf("test:%d\n", 0);));       
-        CO_AWAIT_LB(cort_proto, (printf("test:%d\n", result);), result);
-        CO_AWAIT_LB(cort_proto, (printf("test double:%d, %d\n", result, n);), result,n);
+        //Pure test
+        CO_IF(true)
+        CO_ELSE
+        CO_ELSE_END
+
+        CO_IF(true)
+        CO_IF_END
+
+        CO_IF(false)
+        CO_IF_END
+
+        CO_IF(true)
+            CO_ASYNC_LB(cort_proto, (printf("test:%d\n", 0);));
+        CO_IF_END
+
+        CO_IF(false)
+        CO_ELSE_IF(true)
+            CO_IF(true)
+                CO_IF(the_clock == 1)
+                    CO_AWAIT_LB(cort_proto, (printf("test1:%d\n", result);), result);
+                CO_ELSE
+                    CO_AWAIT_LB(cort_proto, (printf("test2:%d\n", result);), result);
+                CO_ELSE_END
+            CO_IF_END
+        CO_ELSE_END
+
+        CO_IF(false)
+        CO_ELSE_IF(the_clock == 1)
+            CO_AWAIT_LB(cort_proto, (printf("test double3:%d, %d\n", result, n);), result,n);
+        CO_ELSE
+            CO_AWAIT_LB(cort_proto, (printf("test double4:%d, %d\n", result, n);), result,n);
+        CO_ELSE_END
+
+        CO_IF(true)
+            CO_IF(false)
+            CO_ELSE
+                //The second parameter is called before next loop condition test.
+                CO_WHILE(the_clock%2 == 1, ++the_clock)
+                    CO_AWAIT_LB(cort_proto, (printf("test double5:%d, %d\n", result, n);), result,n);
+                    printf("");
+                CO_WHILE_END
+            CO_ELSE_END
+        CO_IF_END
+
+        CO_WHILE(false)
+            //You can ignore the second parameter. But infinite "loop" may lead to stack over flow,
+            //if and only if it never "yields" in the "loop body"
+            //"Loop back" always leads to a function call.
+            CO_AWAIT_LB(cort_proto, (printf("test double6:%d, %d\n", result, n);), result,n);
+        CO_WHILE_END
     CO_END
 }
 

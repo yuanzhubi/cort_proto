@@ -453,8 +453,9 @@ public:
 	cort_tcp_connection_waiter_for_recv* lock_recv(){
 		return (cort_tcp_connection_waiter_for_recv*)lock_waiter();
 	}
-	
-    void close_connection();
+
+	//If you fork a sub-proccess, you may need to stop poll the fd before close it.
+    void close_connection(bool remove_poll = false);
     
 	cort_shared_ptr<cort_tcp_connection_waiter> connection_waiter;
 

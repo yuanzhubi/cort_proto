@@ -574,9 +574,12 @@ void cort_tcp_ctrler::on_connection_inactive(){
 		connection_waiter.clear();
 	}
 }
-void cort_tcp_ctrler::close_connection(){
+void cort_tcp_ctrler::close_connection(bool remove_poll){
     if(connection_waiter){
-        connection_waiter->close_connection();
+    	if(remove_poll){
+			connection_waiter->remove_poll_request();
+    	}
+		connection_waiter->close_connection();
     }
 }
 cort_proto* cort_tcp_ctrler::on_finish(){
