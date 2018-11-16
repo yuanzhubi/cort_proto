@@ -159,9 +159,13 @@ cort_proto* fibonacci_cort::start(){
             CO_IF(false)
             CO_ELSE
                 //The second parameter is called before next loop condition test.
-                CO_WHILE(the_clock%2 == 1, ++the_clock)
-                    CO_AWAIT_LB(cort_proto, (printf("test double5:%d, %d\n", result, n);), result,n);
-                    printf("");
+                CO_WHILE(true)
+                    CO_WHILE(the_clock%2 == 1, ++the_clock)
+                        CO_AWAIT_LB(cort_proto, (printf("test double5:%d, %d\n", result, n);), result,n);
+                        printf("");
+                        CO_CONTINUE;
+                    CO_WHILE_END
+                    CO_BREAK;
                 CO_WHILE_END
             CO_ELSE_END
         CO_IF_END
