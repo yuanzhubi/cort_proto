@@ -264,6 +264,7 @@ public: \
 //Suppose the function has name "start".
     //cort_proto* start(){
 //The function should begin with "CO_BEGIN", end with "CO_END". The return type should be cort_proto*.
+
 #define CO_BEGIN \
     typedef cort_type cort_local_type; \
     struct cort_start_impl{\
@@ -473,13 +474,9 @@ public: \
     }while(false);\
     CO_NEXT_STATE
 
-
-
 //The control interfaces above can generate a "resume point" and following not.
 //The control interfaces above should be used with brackets and following not.
 //The control interfaces above can not used in loop/branch body or other "{}" in CO_BEGIN and CO_END and following can.
-
-
 
 //Sometimes you want to exit from the current coroutine. Using CO_RETURN. 
 //This is "normal" return, like codes running to CO_END and finished.
@@ -500,7 +497,7 @@ public: \
     }while(false)
 
 //CO_RESTART will restart the codes between CO_BEGIN and CO_END without calling on_finish and then_function
-#define CO_RESTART return cort_start_impl::local_start(this);
+#define CO_RESTART return ((cort_super_type*)this)->local_start();
 
 //You can directly jump to next resume point by CO_SKIP_AWAIT or CO_NEXT
 #define CO_SKIP_AWAIT goto ____action_end;
@@ -508,8 +505,6 @@ public: \
 
 //You can directly jump to previous resume point by CO_PREV
 #define CO_PREV return ((cort_prev_type*)this)->local_start();
-
-
 
 
 //Implement
@@ -691,9 +686,10 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
 //When you write "CO_END" and "}", a typical coroutine entry function is defined finished.
 #define CO_END  \
     CO_RETURN; }}cort_end_type; \
+    typedef cort_begin_type cort_super_type; \
     /*Why not direct ((cort_start_impl::cort_begin_type*)this)->local_start()? Because type of (*this) may be a template class and we need to add a "typename" before cort_start_impl::cort_begin_type*/ \
     static cort_proto* local_start(cort_type* ptr){ \
-        return ((cort_begin_type*)(cort_end_type*)ptr)->local_start();\
+        return ((cort_begin_type*)(cort_end_type*)(cort_super_type*)ptr)->local_start();\
     } }; \
     return cort_start_impl::local_start(this);
    //}
@@ -802,6 +798,7 @@ cort_proto* cort_wait_range_any(cort_proto* this_ptr, T begin_forward_iterator, 
     struct cort_local_type: public cort_type{ \
         cort_proto* on_finish(){return 0;} \
     }; \
+    typedef cort_type cort_super_type; \
     struct cort_start_impl{\
         struct cort_begin_type; \
         typedef struct cort_state_struct{ void dummy(){ \

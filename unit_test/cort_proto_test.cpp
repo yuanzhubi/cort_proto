@@ -118,10 +118,7 @@ cort_proto* fibonacci_cort::start(){
             push_work(this);
             CO_AGAIN;
         }
-        result = corts[0]->result + corts[1]->result;
-        delete corts[0];
-        delete corts[1];
-        
+
         //Pure test
         CO_IF(true)
         CO_ELSE
@@ -133,11 +130,15 @@ cort_proto* fibonacci_cort::start(){
 
         CO_IF(false)
             puts("never print!");
+            CO_RETURN;
         CO_IF_END
 
         CO_IF(true)
             CO_ASYNC_LB(cort_proto, (printf("test:%d\n", 0);));
         CO_IF_END
+        result = corts[0]->result + corts[1]->result;
+        delete corts[0];
+        delete corts[1];
 
         CO_IF(false)
         CO_ELSE_IF(true)
@@ -194,6 +195,7 @@ cort_proto* fibonacci_cort::start(){
             puts("never print!");
             CO_AWAIT_LB(cort_proto, (printf("test double8:%d, %d\n", result, n);), result,n);
             puts("never print!");
+            CO_RESTART;
         CO_WHILE_END
     CO_END
 }
