@@ -575,9 +575,7 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
             if(co_bool_condition){ \
                 return  ((skip_type*)(this))->local_start(); \
             } \
-            else{ \
-                return  ((skip_type*)(this))->local_next_start(); \
-            } \
+            return  ((skip_type*)(this))->local_next_start(); \
         }}CO_JOIN(cort_state_name_prev_prev, __LINE__);  \
         /* Function and class definition of previous state end! */\
         /* We will use class CO_JOIN(cort_state_name_skip, __LINE__) to wrap the whole if else body!*/\
@@ -658,8 +656,9 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
         void co_on_continue(){ \
             __VA_ARGS__; \
         } \
-        CO_DECL(CO_JOIN(CO_STATE_NAME, __LINE__), local_start) \
+        CO_DECL_PROTO(CO_JOIN(CO_STATE_NAME, __LINE__)) \
         typedef cort_type break_type; \
+        typedef CO_JOIN(cort_state_name, __LINE__) cort_prev_type; \
         cort_proto* local_start(){ \
             CO_BEGIN
 
@@ -677,11 +676,12 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
         return cort_start_impl::local_start(this); \
         } \
         cort_proto* local_next_start(){  \
-            co_on_continue(); \
+            /*using cort_prev_type to avoid warning*/ \
+           ((cort_type*)(cort_prev_type*)this)->co_on_continue(); \
             if(co_while_test()){ \
                 return this->local_start();\
             }\
-            return local_next_skip(); \
+            return this->local_next_skip(); \
         }\
         cort_proto* local_next_skip(){  \
             CO_NEXT_STATE
@@ -690,7 +690,9 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
 #define CO_END  \
     CO_RETURN; }}cort_end_type; \
     /*Why not direct ((cort_start_impl::cort_begin_type*)this)->local_start()? Because type of (*this) may be a template class and we need to add a "typename" before cort_start_impl::cort_begin_type*/ \
-    static cort_proto* local_start(cort_type* ptr){ return ((cort_begin_type*)(cort_end_type*)ptr)->local_start();} }; \
+    static cort_proto* local_start(cort_type* ptr){ \
+        return ((cort_begin_type*)(cort_end_type*)ptr)->local_start();\
+    } }; \
     return cort_start_impl::local_start(this);
    //}
 //};//end of cort_example definition
