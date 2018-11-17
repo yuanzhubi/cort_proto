@@ -578,7 +578,7 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
             return  ((skip_type*)(this))->local_next_start(); \
         }}CO_JOIN(cort_state_name_prev_prev, __LINE__);  \
         /* Function and class definition of previous state end! */\
-        /* We will use class CO_JOIN(cort_state_name_skip, __LINE__) to wrap the whole if else body!*/\
+        /* We will use class CO_JOIN(cort_state_name_skip, __LINE__) to wrap the whole if else body! */\
         typedef struct CO_JOIN(cort_state_name_skip, __LINE__){ \
             typedef struct CO_JOIN(CO_STATE_NAME, __LINE__) : public cort_local_type { \
                 CO_DECL(CO_JOIN(CO_STATE_NAME, __LINE__), local_start) \
@@ -596,7 +596,7 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
         goto ____action_end; ____action_end:  \
         return co_if_end(this); \
     }}cort_end_type; \
-    /* Function and class definition of previous "if else" body end! */\
+    /* Function and class definition of previous "if else elseif" body end! */\
     static cort_proto* local_start(cort_type* ptr){ \
         return ((cort_begin_type*)(cort_prev_type*)(cort_end_type*)ptr)->local_start(); \
     } }; \
