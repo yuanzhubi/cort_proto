@@ -228,7 +228,7 @@ typedef cort_auto_delete<cort_proto> cort_auto;
     
 // Now let us show an example according to following class cort_example.
 // Coroutie class should be public subclass of cort_proto
-struct cort_example : public cort_proto{
+//struct cort_example : public cort_proto{
 
 //First put all your context variable(with life cycle acrossing a callback proccess) here as class members. Like temporary local virable definition in C language.
     //int run_times;
@@ -552,22 +552,38 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
     CO_ENTER_NEXT_STATE; \
     CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
 
-#define CO_ENTER_NEXT_STATE goto ____action_end; ____action_end: return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_start();
+#define CO_ENTER_NEXT_STATE  \
+    goto ____action_end; ____action_end: return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_start();
 
 #define CORT_NEXT_STATE(cort_state_name) \
     }} CO_JOIN(cort_state_name, _prev_type); \
+    /* Function and class definition of previous state end!*/\
     \
     typedef struct cort_state_name : public cort_local_type {                 \
         typedef cort_state_name cort_this_type;                               \
         typedef CO_JOIN(cort_state_name, _prev_type) cort_prev_type;                            \
-        static cort_proto* start_static(cort_proto* this_ptr){return ((cort_this_type*)(cort_prev_type*)(this_ptr))->local_start();} \
+        static cort_proto* start_static(cort_proto* this_ptr){ \
+            return ((cort_this_type*)(cort_prev_type*)(this_ptr))->local_start();} \
         cort_proto* local_start() { goto ____action_begin; ____action_begin:
 
 #define CO_IF(co_bool_condition) \
-        goto ____action_end; ____action_end:  \
-        if(co_bool_condition){ return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->inner_start();} \
-        else{ return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_next_start();} \
-        CO_BRANCH_BEGIN_IMPL
+            goto ____action_end; ____action_end:  \
+            typedef CO_JOIN(cort_state_name_skip, __LINE__)::CO_JOIN(CO_STATE_NAME, __LINE__) skip_type; \
+            if(co_bool_condition){ \
+                return  ((skip_type*)(this))->inner_start(); \
+            } \
+            else{ \
+                return  ((skip_type*)(this))->local_next_start(); \
+            } \
+        }}CO_JOIN(cort_state_name_prev_prev, __LINE__);  \
+        /* Function and class definition of previous state end! */\
+        /* We will use class CO_JOIN(cort_state_name_skip, __LINE__) to wrap the whole if else body!*/\
+        typedef struct CO_JOIN(cort_state_name_skip, __LINE__){ \
+            typedef struct CO_JOIN(CO_STATE_NAME, __LINE__) : public cort_local_type { \
+                CO_DECL(CO_JOIN(CO_STATE_NAME, __LINE__), inner_start) \
+                cort_proto* inner_start(){ \
+                    CO_BEGIN \
+
 
 #define CO_BRANCH_BEGIN_IMPL\
     }}CO_JOIN(cort_state_name_prev, __LINE__);  \
@@ -578,29 +594,39 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
             CO_BEGIN
 
 #define CO_BRANCH_END_IMPL \
-    goto ____action_end; ____action_end:  \
-    return ((cort_begin_type*)(this))->local_next_skip(); }}cort_end_type; \
-    static cort_proto* local_start(cort_type* ptr){ return ((cort_begin_type*)(cort_end_type*)ptr)->local_start();} }; \
+        goto ____action_end; ____action_end:  \
+        return co_if_end(this); \
+    }}cort_end_type; \
+    /* Function and class definition of previous "if else" body end! */\
+    static cort_proto* local_start(cort_type* ptr){ \
+        return ((cort_begin_type*)(cort_end_type*)ptr)->local_start(); \
+    } }; \
     return cort_start_impl::local_start(this); \
     } \
 
 #define CO_IF_END  \
-    CO_BRANCH_END_IMPL \
-    cort_proto* local_next_start(){ return local_next_skip(); } \
-    cort_proto* local_next_skip(){ \
-        CO_NEXT_STATE
+            CO_BRANCH_END_IMPL \
+            cort_proto* local_next_start(){ \
+                return co_if_end(this); \
+            } \
+        } CO_JOIN(cort_state_name_prev, __LINE__); \
+        /* Any body in "if/else" will call co_if_end to avoid further judge. */ \
+        static cort_proto* co_if_end(cort_local_type *cort){ \
+            return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(cort))->local_start() ;\
+        CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
 
 #define CO_ELSE_IF_END CO_IF_END
 
 #define CO_ELSE_IF(co_bool_condition) \
     CO_BRANCH_END_IMPL \
-    cort_proto* local_next_skip(){return ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_next_skip();} \
     cort_proto* local_next_start(){  \
-        CO_IF(co_bool_condition)
+        goto ____action_end; ____action_end:  \
+        if(co_bool_condition){ return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->inner_start();} \
+        else{ return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_next_start();} \
+        CO_BRANCH_BEGIN_IMPL
 
 #define CO_ELSE  \
     CO_BRANCH_END_IMPL \
-    cort_proto* local_next_skip(){return ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_next_skip();} \
     cort_proto* local_next_start(){  \
         return ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->inner_start(); \
         CO_BRANCH_BEGIN_IMPL
@@ -662,7 +688,7 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
     static cort_proto* local_start(cort_type* ptr){ return ((cort_begin_type*)(cort_end_type*)ptr)->local_start();} }; \
     return cort_start_impl::local_start(this);
    //}
-};//end of cort_example definition
+//};//end of cort_example definition
 
 //Following is a full example, used for CO_WAIT_ANY.
 struct cort_wait_n : public cort_proto{

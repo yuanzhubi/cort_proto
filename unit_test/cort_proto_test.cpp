@@ -125,12 +125,14 @@ cort_proto* fibonacci_cort::start(){
         //Pure test
         CO_IF(true)
         CO_ELSE
+            puts("never print!");
         CO_ELSE_END
 
         CO_IF(true)
         CO_IF_END
 
         CO_IF(false)
+            puts("never print!");
         CO_IF_END
 
         CO_IF(true)
@@ -161,11 +163,23 @@ cort_proto* fibonacci_cort::start(){
                 //The second parameter is called before next loop condition test.
                 CO_WHILE(true)
                     CO_WHILE(the_clock%2 == 1, ++the_clock)
-                        CO_AWAIT_LB(cort_proto, (printf("test double5:%d, %d\n", result, n);), result,n);
-                        printf("");
+                        CO_IF(false)
+                            puts("never print!");
+                        CO_ELSE_IF(the_clock == 1)
+                            CO_AWAIT_LB(cort_proto, (printf("test double5:%d, %d\n", result, n);), result,n);
+                            CO_CONTINUE;
+                            puts("never print!");
+                        CO_ELSE
+                            CO_AWAIT_LB(cort_proto, (printf("test double6:%d, %d\n", result, n);), result,n);
+                            CO_BREAK;
+                            puts("never print!");
+                        CO_ELSE_END
+                        CO_AWAIT_LB(cort_proto, (printf("test double7:%d, %d\n", result, n);), result,n);
                         CO_CONTINUE;
+                        puts("never print!");
                     CO_WHILE_END
                     CO_BREAK;
+                    puts("never print!");
                 CO_WHILE_END
             CO_ELSE_END
         CO_IF_END
@@ -174,7 +188,9 @@ cort_proto* fibonacci_cort::start(){
             //You can ignore the second parameter. But infinite "loop" may lead to stack over flow,
             //if and only if it never "yields" in the "loop body"
             //"Loop back" always leads to a function call.
-            CO_AWAIT_LB(cort_proto, (printf("test double6:%d, %d\n", result, n);), result,n);
+            puts("never print!");
+            CO_AWAIT_LB(cort_proto, (printf("test double8:%d, %d\n", result, n);), result,n);
+            puts("never print!");
         CO_WHILE_END
     CO_END
 }
