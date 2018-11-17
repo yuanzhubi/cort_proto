@@ -248,7 +248,7 @@ public: \
     CO_DECL_PROTO(__VA_ARGS__) \
     /*coroutine function name is start for default*/ \
     static cort_proto* cort_start_static(cort_proto* this_ptr){ \
-        return ((cort_type*)this_ptr)->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();}\
+        return ((cort_type*)this_ptr)->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();} \
     cort_proto* cort_start() { return this->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();} \
     cort_proto* cort_start(cort_proto* &echo_ptr) {echo_ptr = this;  \
         return this->CO_EXPAND(CO_GET_2ND_ARG(__VA_ARGS__,start))();}
@@ -369,7 +369,7 @@ public: \
             this->set_wait_count(1); \
             this->set_callback_function((run_type)(&cort_this_type::start_static)); \
             return this; \
-        }\
+        } \
     }while(false); \
     return start_static(this);
 
@@ -446,7 +446,7 @@ public: \
     if(__wait_result_cort != 0){ \
         __wait_result_cort->set_parent(__wait_any_cort); \
         ++__current_waited_count; \
-    }\
+    } \
     else if(++__current_finished_count == __max_count){ \
         if(__current_waited_count != 0){ \
             __wait_any_cort->start(); \
@@ -521,7 +521,7 @@ public: \
     if(__wait_result_cort != 0){ \
         __wait_result_cort->set_parent(this_ptr); \
         ++current_wait_count; \
-    }\
+    } \
 }
 
 template <typename T>
@@ -544,7 +544,7 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
             this->set_wait_count(1); \
             this->set_callback_function((run_type)(&CO_JOIN(CO_STATE_NAME, __LINE__)::start_static)); \
             return this; \
-        }\
+        } \
     }while(false); \
     CO_NEXT_STATE
 
@@ -581,9 +581,12 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
         /* We will use class CO_JOIN(cort_state_name_skip, __LINE__) to wrap the whole if else body! */\
         typedef struct CO_JOIN(cort_state_name_skip, __LINE__){ \
             typedef struct CO_JOIN(CO_STATE_NAME, __LINE__) : public cort_local_type { \
-                CO_DECL(CO_JOIN(CO_STATE_NAME, __LINE__), local_start) \
+                CO_DECL_PROTO(CO_JOIN(CO_STATE_NAME, __LINE__)) \
                 typedef CO_JOIN(cort_state_name_prev_prev, __LINE__) cort_prev_type; \
                 cort_proto* local_start(){ \
+                    /* We need to provide local_start and local_next_start two interfaces. \
+                        So we have to use CO_BEGIN.\
+                    */ \
                     CO_BEGIN \
 
 
@@ -597,10 +600,9 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
         return co_if_end(this); \
     }}cort_end_type; \
     /* Function and class definition of previous "if else elseif" body end! */\
-    static cort_proto* local_start(cort_type* ptr){ \
-        return ((cort_begin_type*)(cort_prev_type*)(cort_end_type*)ptr)->local_start(); \
-    } }; \
-    return cort_start_impl::local_start(this); \
+    }; \
+    return ((cort_start_impl::cort_begin_type*)(cort_prev_type*) \
+        (cort_start_impl::cort_end_type*)this)->local_start(); \
     } \
 
 #define CO_IF_END  \
@@ -621,8 +623,10 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
     CO_BRANCH_END_IMPL \
     cort_proto* local_next_start(){  \
         goto ____action_end; ____action_end:  \
-        if(co_bool_condition){ return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_start();} \
-        else{ return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_next_start();} \
+        if(co_bool_condition){ \
+            return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_start();\
+        } \
+        return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_next_start(); \
         CO_BRANCH_BEGIN_IMPL
 
 #define CO_ELSE  \
@@ -637,7 +641,7 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
         goto ____action_end; ____action_end:  \
         if(co_bool_condition){ \
             return ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_start(); \
-        }\
+        } \
         return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(this))->local_next_skip(); \
     }}CO_JOIN(cort_state_name, __LINE__);  \
     CO_WHILE_IMPL(co_bool_condition, ##__VA_ARGS__)
@@ -670,19 +674,17 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
             goto ____action_end; ____action_end:  \
             CO_CONTINUE;  \
         }}cort_end_type; \
-        static cort_proto* local_start(cort_type* ptr){ \
-            return ((cort_begin_type*)(cort_end_type*)ptr)->local_start(); \
-        } }; \
-        return cort_start_impl::local_start(this); \
+        }; \
+        return ((cort_start_impl::cort_begin_type*)(cort_prev_type*) \
+        (cort_start_impl::cort_end_type*)this)->local_start(); \
         } \
         cort_proto* local_next_start(){  \
-            /*using cort_prev_type to avoid warning*/ \
-           ((cort_type*)(cort_prev_type*)this)->co_on_continue(); \
+           ((cort_type*)this)->co_on_continue(); \
             if(co_while_test()){ \
                 return this->local_start();\
-            }\
+            } \
             return this->local_next_skip(); \
-        }\
+        } \
         cort_proto* local_next_skip(){  \
             CO_NEXT_STATE
 
@@ -731,7 +733,7 @@ struct cort_wait_n : public cort_proto{
     if(__wait_result_cort != 0){ \
         __wait_result_cort->set_parent(__wait_any_cort); \
         ++__current_waited_count; \
-    }\
+    } \
     else if(++__current_finished_count == __max_count){ \
         this->set_last_resumer(__echo_cort); \
         if(__current_waited_count != 0){ \

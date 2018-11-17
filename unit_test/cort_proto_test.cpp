@@ -159,6 +159,7 @@ cort_proto* fibonacci_cort::start(){
 
         CO_IF(true)
             CO_IF(false)
+                puts("never print!");
             CO_ELSE
                 //The second parameter is called before next loop condition test.
                 CO_WHILE(true)
@@ -174,20 +175,22 @@ cort_proto* fibonacci_cort::start(){
                             CO_BREAK;
                             puts("never print!");
                         CO_ELSE_END
-                        CO_AWAIT_LB(cort_proto, (printf("test double7:%d, %d\n", result, n);), result,n);
+                        puts("never print!");
                         CO_CONTINUE;
                         puts("never print!");
                     CO_WHILE_END
                     CO_BREAK;
                     puts("never print!");
                 CO_WHILE_END
+                CO_AWAIT_LB(cort_proto, (printf("test double7:%d, %d\n", result, n);), result,n);
+                CO_AWAIT_LB(cort_proto, (printf("test double8:%d, %d\n", result, n);), result,n);
             CO_ELSE_END
         CO_IF_END
 
         CO_WHILE(false)
-            //You can ignore the second parameter. But infinite "loop" may lead to stack over flow,
+            //We can ignore the second parameter. But infinite "loop" may lead to stack over flow,
             //if and only if it never "yields" in the "loop body"
-            //"Loop back" always leads to a function call.
+            //Because "loop back" always leads to a function call.
             puts("never print!");
             CO_AWAIT_LB(cort_proto, (printf("test double8:%d, %d\n", result, n);), result,n);
             puts("never print!");
