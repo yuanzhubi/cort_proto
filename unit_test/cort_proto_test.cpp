@@ -55,6 +55,8 @@ struct fibonacci_cort : public cort_proto{
     cort_proto* test(int){return 0;}
 };
 
+int goto_test=20;
+
 cort_proto* fibonacci_cort::start(){
     CO_BEGIN 
         struct cort_tester :public cort_proto {
@@ -197,6 +199,22 @@ cort_proto* fibonacci_cort::start(){
             puts("never print!");
             CO_RESTART;
         CO_WHILE_END
+        
+        CO_LABEL(l1)
+        
+        CO_IF(goto_test != 0)
+            --goto_test;
+            CO_AWAIT_LB(cort_proto, (printf("test double9:%d, %d\n", result, n);), result,n);
+        	CO_GOTO(l1);
+        	puts("never print!");
+        CO_ELSE
+            CO_AWAIT_LB(cort_proto, (printf("test double10:%d, %d\n", result, n);), result,n);
+            CO_GOTO(l2);
+            puts("never print!");
+        CO_ELSE_END
+       
+        CO_LABEL(l2)
+        
     CO_END
 }
 

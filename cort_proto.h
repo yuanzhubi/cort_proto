@@ -489,7 +489,8 @@ public: \
         return 0; \
     }while(false)
 
-//CO_AGAIN will behave like CO_YIELD but it does not generate a new resume point. Current coroutine will be resumed at current resume point.
+//CO_AGAIN will behave like CO_YIELD but it does not generate a new resume point.
+// Current coroutine will be resumed at current resume point.
 //This is useful for delayed retry, like dealing errno "EAGAIN".
 #define CO_AGAIN do{ \
         this->set_callback_function((run_type)(&cort_this_type::start_static));  \
@@ -565,24 +566,24 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
     cort_proto* local_start() { goto ____action_begin; ____action_begin:
 
 #define CO_IF(co_bool_condition) \
-            goto ____action_end; ____action_end:  \
-            typedef CO_JOIN(cort_state_name_skip, __LINE__)::CO_JOIN(CO_STATE_NAME, __LINE__) skip_type; \
-            if(co_bool_condition){ \
-                return  ((skip_type*)(this))->local_start(); \
-            } \
-            return  ((skip_type*)(this))->local_next_start(); \
-        }}CO_JOIN(cort_state_name_prev_prev, __LINE__);  \
-        /* Function and class definition of previous state end! */\
-        /* We will use class CO_JOIN(cort_state_name_skip, __LINE__) to wrap the whole if else body! */\
-        typedef struct CO_JOIN(cort_state_name_skip, __LINE__){ \
-            typedef struct CO_JOIN(CO_STATE_NAME, __LINE__) : public cort_local_type { \
-                CO_DECL_PROTO(CO_JOIN(CO_STATE_NAME, __LINE__)) \
-                typedef CO_JOIN(cort_state_name_prev_prev, __LINE__) cort_prev_type; \
-                cort_proto* local_start(){ \
-                    /* We need to provide local_start and local_next_start two interfaces. \
-                        So we have to use CO_BEGIN.\
-                    */ \
-                    CO_BEGIN \
+        goto ____action_end; ____action_end:  \
+        typedef CO_JOIN(cort_state_name_skip, __LINE__)::CO_JOIN(CO_STATE_NAME, __LINE__) skip_type; \
+        if(co_bool_condition){ \
+            return  ((skip_type*)(this))->local_start(); \
+        } \
+        return  ((skip_type*)(this))->local_next_start(); \
+    }}CO_JOIN(cort_state_name_prev_prev, __LINE__);  \
+    /* Function and class definition of previous state end! */\
+    /* We will use class CO_JOIN(cort_state_name_skip, __LINE__) to wrap the whole if else body! */\
+    typedef struct CO_JOIN(cort_state_name_skip, __LINE__){ \
+        typedef struct CO_JOIN(CO_STATE_NAME, __LINE__) : public cort_local_type { \
+            CO_DECL_PROTO(CO_JOIN(CO_STATE_NAME, __LINE__)) \
+            typedef CO_JOIN(cort_state_name_prev_prev, __LINE__) cort_prev_type; \
+            cort_proto* local_start(){ \
+                /* We need to provide local_start and local_next_start two interfaces. \
+                    So we have to use CO_BEGIN.\
+                */ \
+                CO_BEGIN \
 
 
 #define CO_BRANCH_BEGIN_IMPL \
@@ -601,16 +602,16 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
     } \
 
 #define CO_IF_END  \
-            CO_BRANCH_END_IMPL \
-            cort_proto* local_next_start(){ \
-                return co_if_end(this); \
-            } \
-        } CO_JOIN(cort_state_name_prev, __LINE__); \
-        /* Any body in "CO_IF/CO_ELSE/CO_ELSE_IF" will call co_if_end to avoid further judge. */ \
-        static cort_proto* co_if_end(cort_local_type *cort){ \
-            return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(CO_JOIN(cort_state_name_prev, __LINE__)*)(cort)) \
-            ->local_start() ;\
-        CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
+        CO_BRANCH_END_IMPL \
+        cort_proto* local_next_start(){ \
+            return co_if_end(this); \
+        } \
+    } CO_JOIN(cort_state_name_prev, __LINE__); \
+    /* Any body in "CO_IF/CO_ELSE/CO_ELSE_IF" will call co_if_end to avoid further judge. */ \
+    static cort_proto* co_if_end(cort_local_type *cort){ \
+        return  ((CO_JOIN(CO_STATE_NAME, __LINE__)*)(CO_JOIN(cort_state_name_prev, __LINE__)*)(cort)) \
+        ->local_start() ;\
+    CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, __LINE__))
 
 #define CO_ELSE_IF_END CO_IF_END
 
@@ -666,22 +667,29 @@ size_t cort_wait_range(cort_proto* this_ptr, T begin_forward_iterator, T end_for
 #define CO_CONTINUE return break_type::local_next_start()
 
 #define CO_WHILE_END \
-            goto ____action_end; ____action_end:  \
-            CO_CONTINUE;  \
-        }}cort_end_type; \
-        }; \
-        return ((cort_start_impl::cort_begin_type*)(cort_prev_type*) \
-        (cort_start_impl::cort_end_type*)this)->local_start(); \
+        goto ____action_end; ____action_end:  \
+        CO_CONTINUE;  \
+    }}cort_end_type; \
+    }; \
+    return ((cort_start_impl::cort_begin_type*)(cort_prev_type*) \
+    (cort_start_impl::cort_end_type*)this)->local_start(); \
+    } \
+    cort_proto* local_next_start(){  \
+       ((cort_type*)this)->co_on_continue(); \
+        if(co_while_test()){ \
+            return this->local_start();\
         } \
-        cort_proto* local_next_start(){  \
-           ((cort_type*)this)->co_on_continue(); \
-            if(co_while_test()){ \
-                return this->local_start();\
-            } \
-            return this->local_next_skip(); \
-        } \
-        cort_proto* local_next_skip(){  \
-            CO_NEXT_STATE
+        return this->local_next_skip(); \
+    } \
+    cort_proto* local_next_skip(){  \
+        CO_NEXT_STATE
+        
+#define CO_LABEL(co_goto_label) \
+    goto ____action_end; ____action_end: return  ((CO_JOIN(CO_STATE_NAME, co_goto_label)*)(this))->local_start(); \
+    CORT_NEXT_STATE(CO_JOIN(CO_STATE_NAME, co_goto_label))
+    
+#define CO_GOTO(co_goto_label) \
+    return  ((CO_JOIN(CO_STATE_NAME, co_goto_label)*)(this))->local_start();
 
 //When you write "CO_END" and "}", a typical coroutine entry function is defined finished.
 #define CO_END  \
